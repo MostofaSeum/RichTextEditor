@@ -9,7 +9,7 @@ import {
     Scissors, Undo, Redo, ChevronDown, Minus, Superscript, Subscript,
     Code, Quote, Palette, Highlighter, Outdent, Indent, Table, Plus,
     Copy, Eraser, Type, Languages, Maximize, Minimize, ArrowUpDown, MousePointer2,
-    Grid, Search, Mic, Smile, FileText, Brush, Shapes, FileUp
+    Grid, Search, Mic, Smile, FileText, Brush, Shapes, FileUp, Upload, X
 } from 'lucide-react';
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -27,6 +27,12 @@ export interface RichTextEditorProps {
     /** Minimum height of the editing area in px */
     minHeight?: number;
     className?: string;
+    /**
+     * Optional custom image uploader for S3, Cloudinary, Firebase, or custom backend.
+     * Receives the File and should return the uploaded public image URL.
+     * If omitted, images are automatically converted to Base64 data URLs.
+     */
+    onUploadImage?: (file: File) => Promise<string> | string;
     /**
      * callback; the caller should invoke the callback with the chosen image URL.
      */
@@ -858,12 +864,18 @@ export function RichTextEditor({
     placeholder = 'Start typing here…',
     minHeight = 280,
     className = '',
+    onUploadImage,
     onInsertImageClick,
     onInsertFileClick: _onInsertFileClick,
 }: RichTextEditorProps) {
     const editorRef = useRef<HTMLDivElement>(null);
     const skipSync = useRef(false);
     const savedRange = useRef<Range | null>(null);
+
+    const [showImageModal, setShowImageModal] = useState(false);
+    const [imageUrlInput, setImageUrlInput] = useState('');
+    const [isUploadingImage, setIsUploadingImage] = useState(false);
+    const [imageModalTab, setImageModalTab] = useState<'upload' | 'url'>('upload');
 
     const [currentFont, setCurrentFont] = useState('Default');
     const [currentSize, setCurrentSize] = useState('14');
@@ -1272,12 +1284,44 @@ export function RichTextEditor({
         if (url) exec('createLink', url);
     };
 
+    const processAndInsertImageFile = useCallback(async (file: File) => {
+        if (!file.type.startsWith('image/')) return;
+        setIsUploadingImage(true);
+        try {
+            let finalUrl = '';
+            if (onUploadImage) {
+                finalUrl = await onUploadImage(file);
+            } else {
+                // Default: convert to Base64 data URL
+                finalUrl = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+            }
+            if (finalUrl) {
+                exec('insertImage', finalUrl);
+            }
+        } catch (err) {
+            console.error('Failed to upload/insert image:', err);
+        } finally {
+            setIsUploadingImage(false);
+            setShowImageModal(false);
+        }
+    }, [onUploadImage, exec]);
+
     const insertImage = () => {
         if (onInsertImageClick) {
             onInsertImageClick((url: string) => exec('insertImage', url));
         } else {
-            const url = prompt('Enter image URL:');
-            if (url) exec('insertImage', url);
+            // Save current selection range before opening modal
+            const sel = window.getSelection();
+            if (sel && sel.rangeCount > 0) {
+                savedRange.current = sel.getRangeAt(0).cloneRange();
+            }
+            setImageUrlInput('');
+            setShowImageModal(true);
         }
     };
 
@@ -1556,6 +1600,21 @@ export function RichTextEditor({
     };
 
     const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+        // Check if pasting image files from clipboard (e.g. screenshot)
+        const items = e.clipboardData.items;
+        if (items) {
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.startsWith('image/')) {
+                    const file = items[i].getAsFile();
+                    if (file) {
+                        e.preventDefault();
+                        processAndInsertImageFile(file);
+                        return;
+                    }
+                }
+            }
+        }
+
         e.preventDefault();
         const text = e.clipboardData.getData('text/plain');
         const html = e.clipboardData.getData('text/html');
@@ -2319,6 +2378,19 @@ export function RichTextEditor({
                     dir="ltr"
                     onInput={handleInput}
                     onPaste={handlePaste}
+                    onDrop={(e) => {
+                        e.preventDefault();
+                        const files = e.dataTransfer.files;
+                        if (files && files.length > 0) {
+                            for (let i = 0; i < files.length; i++) {
+                                if (files[i].type.startsWith('image/')) {
+                                    processAndInsertImageFile(files[i]);
+                                    break;
+                                }
+                            }
+                        }
+                    }}
+                    onDragOver={(e) => e.preventDefault()}
                     onFocus={forceLtr}
                     data-placeholder={placeholder}
                     className="grow outline-none px-5 py-4 text-slate-700 text-sm text-left overflow-y-auto rte-content w-full"
@@ -2571,6 +2643,118 @@ export function RichTextEditor({
                                 🖌️ Insert Drawing
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Universal Image Insertion Modal */}
+            {showImageModal && (
+                <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-xs select-none animate-fadeIn">
+                    <div className="bg-white rounded-2xl shadow-2xl p-6 w-[480px] flex flex-col gap-4 border border-gray-100 animate-slideUp">
+                        <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                            <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                <ImageIcon className="w-4 h-4 text-indigo-600" />
+                                Insert Image
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={() => setShowImageModal(false)}
+                                className="text-gray-400 hover:text-gray-600 font-extrabold text-sm hover:bg-gray-100 p-1.5 rounded-full transition-colors"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        {/* Tabs */}
+                        <div className="flex border-b border-gray-100 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setImageModalTab('upload')}
+                                className={`pb-2 text-xs font-bold transition-colors cursor-pointer border-b-2 flex items-center gap-1.5 ${
+                                    imageModalTab === 'upload'
+                                        ? 'border-indigo-600 text-indigo-600'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                                }`}
+                            >
+                                <Upload className="w-3.5 h-3.5" />
+                                Upload from Computer
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setImageModalTab('url')}
+                                className={`pb-2 text-xs font-bold transition-colors cursor-pointer border-b-2 flex items-center gap-1.5 ${
+                                    imageModalTab === 'url'
+                                        ? 'border-indigo-600 text-indigo-600'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                                }`}
+                            >
+                                <LinkIcon className="w-3.5 h-3.5" />
+                                Image URL
+                            </button>
+                        </div>
+
+                        {imageModalTab === 'upload' ? (
+                            <div className="flex flex-col gap-3">
+                                <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 hover:border-indigo-500 rounded-xl p-8 bg-gray-50/60 hover:bg-indigo-50/30 transition-all cursor-pointer">
+                                    <Upload className="w-8 h-8 text-indigo-500 mb-2" />
+                                    <span className="text-xs font-bold text-gray-700">Click to choose image from device</span>
+                                    <span className="text-[11px] text-gray-400 mt-1">PNG, JPG, WebP, GIF, SVG</span>
+                                    <span className="text-[10px] text-indigo-600 font-medium mt-2 bg-indigo-50 px-2.5 py-0.5 rounded-full">
+                                        💡 You can also Drag &amp; Drop or Ctrl+V directly into editor!
+                                    </span>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        disabled={isUploadingImage}
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) processAndInsertImageFile(file);
+                                        }}
+                                    />
+                                </label>
+                                {isUploadingImage && (
+                                    <p className="text-center text-xs font-bold text-indigo-600 animate-pulse">
+                                        Processing image...
+                                    </p>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-3">
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-xs font-semibold text-gray-600">Web Image URL</label>
+                                    <input
+                                        type="url"
+                                        placeholder="https://example.com/photo.jpg"
+                                        value={imageUrlInput}
+                                        onChange={(e) => setImageUrlInput(e.target.value)}
+                                        className="text-xs border border-gray-200 rounded-lg p-2.5 outline-none focus:border-indigo-600 text-gray-700 bg-white"
+                                    />
+                                </div>
+                                <div className="flex justify-end gap-2 mt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowImageModal(false)}
+                                        className="px-4 py-2 border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 font-bold transition-all text-xs cursor-pointer"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={!imageUrlInput.trim()}
+                                        onClick={() => {
+                                            if (imageUrlInput.trim()) {
+                                                exec('insertImage', imageUrlInput.trim());
+                                                setShowImageModal(false);
+                                            }
+                                        }}
+                                        className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold transition-all text-xs cursor-pointer shadow-md"
+                                    >
+                                        Insert
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

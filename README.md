@@ -49,30 +49,55 @@ export function MySection() {
 }
 ```
 
-## Features (all preserved from Storio)
+## Features
 
-- contentEditable-based WYSIWYG editing
-- Full formatting toolbar: bold, italic, underline, strikethrough, superscript, subscript
-- Font family, font size, heading dropdowns
-- Text color & highlight color pickers
-- Alignment, line spacing, lists, indent/outdent
-- Code blocks, blockquotes, custom horizontal rules
-- Links, images (pluggable via `onInsertImageClick`)
-- **Table picker & premium table operations** (add/delete rows/columns, cell background, table themes)
-- **WordArt typography presets**
-- **Symbols & emoji picker**
-- **Search & replace**
-- **Voice typing (Web Speech API)**
-- **MS Word (.docx) import** via Mammoth
-- **11 premium document templates** (newsletters, reports, syllabi, pricing, faculty showcase, etc.)
-- **MS Word shapes** (process blocks, badges, callouts, banners, arrows, shields)
-- **Signature & canvas sketch pad** (draw and insert as image)
-- **Image resize handles & alignment toolbar** (floating overlay when image selected)
-- **Draft autosave & recovery banner** (localStorage)
-- **Document statistics** (words, characters, reading time)
-- **Translate** (Google Translate integration)
-- **Fullscreen mode**
-- **Status bar with word count**
+- **Bidirectional Editing (Visual WYSIWYG ⇄ Source Code)**:
+  - Visual mode: Full formatting toolbar (Bold, Italic, Headings, Fonts, Colors, Highlights, Table operations, Mammoth .docx import, Document templates, etc.).
+  - **Source Code (`< >`) Mode**: Allows writers and developers to write or paste arbitrary **HTML, custom `<style>` CSS, and interactive `<script>` JavaScript** to build beautiful, custom, interactive blog layouts.
+- **Accompanying `<RichTextRenderer />` Component**:
+  - Automatically executes and mounts custom HTML, styles, and interactive JavaScript on reader-facing blog post pages without any extra coding.
+- **Self-Contained Styling**: Pre-bundled minified CSS (`@storio/rich-text-editor/styles.css`).
+- **Zero-Config Installation**: Works out of the box with React 18+ and Next.js.
+
+## Usage
+
+### 1. In your Admin / Writer Section:
+```tsx
+'use client';
+
+import { RichTextEditor } from '@storio/rich-text-editor';
+import '@storio/rich-text-editor/styles.css';
+import { useState } from 'react';
+
+export function BlogEditor() {
+  const [content, setContent] = useState('<p>Start writing your article...</p>');
+
+  return (
+    <RichTextEditor
+      value={content}
+      onChange={setContent}
+      placeholder="Write your blog post…"
+      minHeight={350}
+    />
+  );
+}
+```
+
+### 2. On your Public Blog Post / Reader Page:
+```tsx
+'use client';
+
+import { RichTextRenderer } from '@storio/rich-text-editor';
+
+export function BlogPostPage({ post }: { post: { content: string } }) {
+  return (
+    <article className="prose max-w-4xl mx-auto my-8">
+      {/* Renders the custom HTML, executes custom <style> rules, and runs interactive <script> widgets */}
+      <RichTextRenderer html={post.content} />
+    </article>
+  );
+}
+```
 
 ## Props
 

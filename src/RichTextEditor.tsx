@@ -249,7 +249,7 @@ function CustomHrBtn({ onInsert }: { onInsert: (style: string, size: string, col
 
             {open && (
                 <div
-                    className="absolute left-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-2xl p-4 flex flex-col gap-3"
+                    className="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-2xl p-4 flex flex-col gap-3"
                     style={{ minWidth: 260 }}
                 >
                     <p className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
@@ -1478,15 +1478,24 @@ export function RichTextEditor({
         const sel = window.getSelection();
         if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
 
-        try {
-            const range = sel.getRangeAt(0);
-            const span = document.createElement('span');
-            span.style.textTransform = caseType;
-            range.surroundContents(span);
-            handleInput();
-        } catch {
-            // fallback
+        const range = sel.getRangeAt(0);
+        const selectedText = range.toString();
+        if (!selectedText) return;
+
+        let transformedText = selectedText;
+        if (caseType === 'uppercase') {
+            transformedText = selectedText.toUpperCase();
+        } else if (caseType === 'lowercase') {
+            transformedText = selectedText.toLowerCase();
+        } else if (caseType === 'capitalize') {
+            transformedText = selectedText.replace(/\b\w+/g, word =>
+                word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+            );
         }
+
+        // Replace the selected text with the transformed text
+        document.execCommand('insertText', false, transformedText);
+        handleInput();
     };
 
     const fetchTranslation = async (text: string, targetLang: string): Promise<string> => {
@@ -2232,7 +2241,7 @@ export function RichTextEditor({
 
                 <ToolBtn onClick={() => exec('undo')} title="Undo"><Undo className="w-3.5 h-3.5" /></ToolBtn>
                 <ToolBtn onClick={() => exec('redo')} title="Redo"><Redo className="w-3.5 h-3.5" /></ToolBtn>
-                <ToolDropdown label={<span className="flex items-center gap-1 text-[11px] font-semibold text-slate-700"><Languages className="w-3.5 h-3.5" /> Translate</span>} minW={145}>
+                <ToolDropdown label={<span className="flex items-center gap-1 text-[11px] font-semibold text-slate-700"><Languages className="w-3.5 h-3.5" /> Translate</span>} minW={145} align="right">
                     <DropItem onClick={() => handleTranslate('en')}>English</DropItem>
                     <DropItem onClick={() => handleTranslate('bn')}>Bengali (বাংলা)</DropItem>
                     <DropItem onClick={() => handleTranslate('ar')}>Arabic (العربية)</DropItem>

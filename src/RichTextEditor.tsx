@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 // @ts-expect-error: Mammoth browser entrypoint lacks TypeScript declaration file
 import * as mammoth from 'mammoth/mammoth.browser';
 import {
@@ -1850,12 +1851,17 @@ export function RichTextEditor({
         e.target.value = '';
     };
 
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
     const toggleFullscreen = () => {
-        setIsFullscreen(!isFullscreen);
+        setIsFullscreen(prev => !prev);
     };
 
-    return (
-        <div className={`border border-gray-200 rounded-2xl overflow-hidden shadow-sm bg-white flex flex-col ${className} ${isFullscreen ? 'fixed inset-4 z-[9999] shadow-2xl h-[calc(100vh-32px)]' : ''}`}>
+    const editorContent = (
+        <div className={`border border-gray-200 rounded-2xl overflow-hidden shadow-sm bg-white flex flex-col ${className} ${isFullscreen ? '!fixed !inset-0 !z-[999999] !w-screen !h-screen !rounded-none !m-0 !border-none' : ''}`}>
 
             {showDraftBanner && (
                 <div className="bg-indigo-50 border-b border-indigo-100 px-4 py-2.5 flex items-center justify-between animate-fadeIn text-xs text-indigo-900 font-semibold select-none">
@@ -2766,6 +2772,12 @@ export function RichTextEditor({
             )}
         </div>
     );
+
+    if (isFullscreen && mounted && typeof document !== 'undefined') {
+        return createPortal(editorContent, document.body);
+    }
+
+    return editorContent;
 }
 
 export default RichTextEditor;

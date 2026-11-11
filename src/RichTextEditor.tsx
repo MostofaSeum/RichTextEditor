@@ -912,9 +912,10 @@ export function RichTextEditor({
         const imgBounds = selectedImg.getBoundingClientRect();
         const editorBounds = editorRef.current.getBoundingClientRect();
 
+        // Calculate offset including the scroll position inside the editor
         setResizerRect({
-            top: imgBounds.top - editorBounds.top,
-            left: imgBounds.left - editorBounds.left,
+            top: imgBounds.top - editorBounds.top + editorRef.current.scrollTop,
+            left: imgBounds.left - editorBounds.left + editorRef.current.scrollLeft,
             width: imgBounds.width,
             height: imgBounds.height
         });
@@ -926,24 +927,28 @@ export function RichTextEditor({
         if (!selectedImg) return;
 
         const startX = e.clientX;
+        const startY = e.clientY;
         const startWidth = selectedImg.clientWidth || selectedImg.offsetWidth;
         const startHeight = selectedImg.clientHeight || selectedImg.offsetHeight;
         const ratio = startWidth / startHeight;
 
         const handleMouseMove = (moveEvent: MouseEvent) => {
             const dX = moveEvent.clientX - startX;
+            const dY = moveEvent.clientY - startY;
 
             let newWidth = startWidth;
             if (handle === 'bottom-right' || handle === 'top-right') {
-                newWidth = Math.max(50, startWidth + dX);
+                newWidth = Math.max(40, startWidth + dX);
             } else if (handle === 'bottom-left' || handle === 'top-left') {
-                newWidth = Math.max(50, startWidth - dX);
+                newWidth = Math.max(40, startWidth - dX);
             }
 
-            const newHeight = newWidth / ratio;
+            // Maintain aspect ratio
+            const newHeight = Math.round(newWidth / ratio);
 
-            selectedImg.style.width = `${newWidth}px`;
+            selectedImg.style.width = `${Math.round(newWidth)}px`;
             selectedImg.style.height = `${newHeight}px`;
+            selectedImg.style.maxWidth = '100%';
 
             updateResizerRect();
         };
@@ -2406,8 +2411,8 @@ export function RichTextEditor({
                                 left: resizerRect.left,
                                 width: resizerRect.width,
                                 height: resizerRect.height,
-                                border: '2px dashed #4f46e5',
-                                transition: 'outline 0.15s ease'
+                                outline: '2px solid #6366f1',
+                                outlineOffset: '2px',
                             }}
                         >
                             {['top-left', 'top-right', 'bottom-left', 'bottom-right'].map(handle => {
@@ -2417,14 +2422,15 @@ export function RichTextEditor({
                                     <div
                                         key={handle}
                                         onMouseDown={(e) => handleResizeMouseDown(e, handle)}
-                                        className="absolute w-2.5 h-2.5 bg-white border border-indigo-600 rounded-full cursor-pointer pointer-events-auto hover:scale-125 transition-transform shadow-xs"
+                                        className="absolute w-3.5 h-3.5 bg-white border-2 border-indigo-600 rounded-sm cursor-pointer pointer-events-auto hover:bg-indigo-600 hover:scale-125 transition-all shadow-md"
                                         style={{
-                                            top: isTop ? '-5px' : 'auto',
-                                            bottom: isTop ? 'auto' : '-5px',
-                                            left: isLeft ? '-5px' : 'auto',
-                                            right: isLeft ? 'auto' : '-5px',
+                                            top: isTop ? '-6px' : 'auto',
+                                            bottom: isTop ? 'auto' : '-6px',
+                                            left: isLeft ? '-6px' : 'auto',
+                                            right: isLeft ? 'auto' : '-6px',
                                             cursor: handle === 'top-left' || handle === 'bottom-right' ? 'nwse-resize' : 'nesw-resize'
                                         }}
+                                        title="Drag to resize image"
                                     />
                                 );
                             })}

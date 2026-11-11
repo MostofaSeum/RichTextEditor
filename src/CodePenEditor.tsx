@@ -19,6 +19,8 @@ export interface CodePenEditorProps {
     className?: string;
     minHeight?: number;
     showPreview?: boolean;
+    onUploadImage?: (file: File) => Promise<string> | string;
+    onInsertImageClick?: (callback: (url: string) => void) => void;
 }
 
 export function CodePenEditor({
@@ -29,6 +31,8 @@ export function CodePenEditor({
     className = '',
     minHeight = 350,
     showPreview = true,
+    onUploadImage,
+    onInsertImageClick,
 }: CodePenEditorProps) {
     const [activeTab, setActiveTab] = useState<'visual' | 'html' | 'css' | 'js'>('visual');
     const [html, setHtml] = useState(initialHtml);
@@ -178,6 +182,8 @@ ${newJs}
                             value={html}
                             onChange={handleHtmlChange}
                             minHeight={minHeight}
+                            onUploadImage={onUploadImage}
+                            onInsertImageClick={onInsertImageClick}
                         />
                     </div>
                 )}

@@ -182,7 +182,7 @@ function TablePickerBtn({ onInsert }: { onInsert: (rows: number, cols: number) =
                     className="absolute left-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-2xl p-3 select-none"
                     style={{ minWidth: 220 }}
                 >
-                    <p className="text-[10px] font-bold uppercase text-secondary/50 mb-2 tracking-wider">
+                    <p className="text-[10px] font-bold uppercase text-slate-400 mb-2 tracking-wider">
                         {label}
                     </p>
                     <div className="flex flex-col gap-0.5">
@@ -213,7 +213,7 @@ function TablePickerBtn({ onInsert }: { onInsert: (rows: number, cols: number) =
                             </div>
                         ))}
                     </div>
-                    <p className="text-[10px] text-secondary/40 mt-2 text-center">Click to insert table</p>
+                    <p className="text-[10px] text-slate-400 mt-2 text-center">Click to insert table</p>
                 </div>
             )}
         </div>
@@ -252,7 +252,7 @@ function CustomHrBtn({ onInsert }: { onInsert: (style: string, size: string, col
                     className="absolute left-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-2xl p-4 flex flex-col gap-3"
                     style={{ minWidth: 260 }}
                 >
-                    <p className="text-[10px] font-bold uppercase text-secondary/50 tracking-wider">
+                    <p className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
                         Divider Designer
                     </p>
 
@@ -814,7 +814,7 @@ function SymbolPickerBtn({ onInsert }: { onInsert: (char: string) => void }) {
                 <div
                     className="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-2xl p-3 flex flex-col gap-2 w-64 animate-fadeIn"
                 >
-                    <p className="text-[10px] font-bold uppercase text-secondary/50 tracking-wider">
+                    <p className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
                         Symbols & Emojis
                     </p>
                     <div className="flex border-b border-gray-100 gap-1 pb-1">

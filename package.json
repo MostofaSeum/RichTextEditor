@@ -1,0 +1,58 @@
+{
+  "name": "@storio/rich-text-editor",
+  "version": "1.0.0",
+  "description": "A zero-config, feature-complete rich text editor component for React / Next.js.",
+  "license": "MIT",
+  "author": "Brainicon Technology",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./styles.css": "./dist/styles.css"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": [
+    "./dist/styles.css"
+  ],
+  "scripts": {
+    "build:css": "tailwindcss -i ./src/styles.css -o ./dist/styles.css --minify",
+    "build:js": "tsup",
+    "build": "npm run build:css && npm run build:js",
+    "dev": "tsup --watch",
+    "test:ui": "vite",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "tailwindcss": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "isomorphic-dompurify": "^2.0.0",
+    "lucide-react": "^0.475.0",
+    "mammoth": "^1.7.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.5",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "tailwindcss": "^4.3.5",
+    "tsup": "^8.5.1",
+    "typescript": "^5.0.0",
+    "vite": "^8.3.8"
+  }
+}

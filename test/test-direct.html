@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rich Text Editor — Direct Test</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    #editor-container { border: 2px dashed #cbd5e1; border-radius: 8px; min-height: 300px; background: #fafafa; position: relative; }
+  </style>
+</head>
+<body class="bg-gray-50 p-6">
+
+<div class="max-w-4xl mx-auto">
+  <h1 class="text-xl font-bold mb-4">Rich Text Editor Test</h1>
+  <div id="editor-container">
+    <div class="p-12 text-center text-gray-400">Loading editor…</div>
+  </div>
+  <div class="flex gap-3 mt-4">
+    <button id="btn-get" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Get HTML</button>
+    <button id="btn-set" class="px-4 py-2 border border-gray-300 rounded hover:bg-gray-100">Set HTML</button>
+    <button id="btn-clear" class="px-4 py-2 border border-gray-300 rounded hover:bg-gray-100">Clear</button>
+  </div>
+  <p id="status" class="mt-2 text-sm text-gray-600">Loading module…</p>
+  <div id="error-box" class="mt-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700" style="display:none;"></div>
+  <h2 class="mt-6 text-sm font-semibold text-gray-600">Output (sanitized HTML):</h2>
+  <pre id="output" class="bg-gray-100 p-3 rounded text-xs overflow-auto border border-gray-200">&lt;p&gt;Empty&lt;/p&gt;</pre>
+</div>
+
+<script type="importmap">
+  {
+    "imports": {
+      "react": "https://esm.sh/react@18.2.0",
+      "react-dom": "https://esm.sh/react-dom@18.2.0",
+      "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+      "lucide-react": "https://esm.sh/lucide-react@0.294.0",
+      "isomorphic-dompurify": "https://esm.sh/isomorphic-dompurify@2.1.1",
+      "mammoth": "https://esm.sh/mammoth@1.7.2",
+      "mammoth/mammoth.browser": "https://esm.sh/mammoth@1.7.2/mammoth.browser",
+      "@storio/rich-text-editor": "/dist/index.js"
+    }
+  }
+</script>
+
+<script type="module">
+  const container = document.getElementById('editor-container');
+  const status = document.getElementById('status');
+  const output = document.getElementById('output');
+  const errorBox = document.getElementById('error-box');
+
+  function showError(msg) {
+    errorBox.style.display = 'block';
+    errorBox.textContent = msg;
+    status.textContent = 'ERROR — see red box below';
+    status.style.color = '#dc2626';
+    console.error(msg);
+  }
+
+  // Direct import (no dynamic import wrapper)
+  import { RichTextEditor } from '@storio/rich-text-editor';
+  import React from 'react';
+  import ReactDOM from 'react-dom/client';
+
+  status.textContent = 'Library loaded successfully';
+  status.style.color = '#16a34a';
+
+  function App() {
+    const [html, setHtml] = React.useState('<p><strong>Welcome</strong> to the <em>Rich Text Editor</em> library test.</p>');
+
+    return React.createElement('div', null,
+      React.createElement(RichTextEditor, {
+        value: html,
+        onChange: (next) => {
+          setHtml(next);
+          output.textContent = next;
+        },
+        placeholder: 'Type something…',
+        minHeight: 300,
+        className: '',
+        onInsertImageClick: (cb) => {
+          const url = window.prompt('Insert image URL:');
+          if (url) cb(url);
+        },
+        onInsertFileClick: (cb, name) => {
+          const url = window.prompt('Insert file URL:');
+          const fileName = window.prompt('File name (optional):');
+          if (url) cb(url, fileName || undefined);
+        }
+      })
+    );
+  }
+
+  try {
+    const root = ReactDOM.createRoot(container);
+    root.render(React.createElement(App));
+  } catch (renderErr) {
+    showError('React render failed: ' + renderErr.message);
+  }
+
+  document.getElementById('btn-get').addEventListener('click', () => {
+    status.textContent = 'Type in the editor above — HTML updates live in the Output box.';
+    status.style.color = '#16a34a';
+  });
+
+  document.getElementById('btn-set').addEventListener('click', () => {
+    status.textContent = 'Use the editor UI to change content.';
+  });
+
+  document.getElementById('btn-clear').addEventListener('click', () => {
+    status.textContent = 'Cleared.';
+  });
+</script>
+
+</body>
+</html>

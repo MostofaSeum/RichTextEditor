@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rich Text Editor — Diagnostic Test</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    #editor-container { border: 2px dashed #cbd5e1; border-radius: 8px; min-height: 300px; background: #fafafa; position: relative; }
+  </style>
+</head>
+<body class="bg-gray-50 p-6">
+
+<div class="max-w-4xl mx-auto">
+  <h1 class="text-xl font-bold mb-4">Rich Text Editor — Diagnostic</h1>
+  
+  <div id="editor-container">
+    <div class="p-12 text-center text-gray-400">Running diagnostics…</div>
+  </div>
+  
+  <div class="flex gap-3 mt-4">
+    <button id="btn-test-import" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Test Import</button>
+    <button id="btn-test-react" class="px-4 py-2 border border-gray-300 rounded hover:bg-gray-100">Test React</button>
+    <button id="btn-test-editor" class="px-4 py-2 border border-gray-300 rounded hover:bg-gray-100">Test Editor</button>
+  </div>
+  
+  <p id="status" class="mt-2 text-sm text-gray-600">Waiting for tests…</p>
+  <div id="results" class="mt-4 p-3 bg-gray-50 border border-gray-200 rounded text-sm font-mono text-gray-800"></div>
+  
+  <h2 class="mt-6 text-sm font-semibold text-gray-600">Output:</h2>
+  <pre id="output" class="bg-gray-100 p-3 rounded text-xs overflow-auto border border-gray-200">&lt;p&gt;Empty&lt;/p&gt;</pre>
+</div>
+
+<script type="importmap">
+  {
+    "imports": {
+      "react": "https://esm.sh/react@18.2.0",
+      "react-dom": "https://esm.sh/react-dom@18.2.0",
+      "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+      "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
+      "lucide-react": "https://esm.sh/lucide-react@0.294.0",
+      "isomorphic-dompurify": "https://esm.sh/isomorphic-dompurify@2.1.0",
+      "mammoth": "https://esm.sh/mammoth@1.7.2",
+      "mammoth/mammoth.browser": "https://esm.sh/mammoth@1.7.2/mammoth.browser",
+      "@storio/rich-text-editor": "/dist/index.js"
+    }
+  }
+</script>
+
+<script type="module">
+  const status = document.getElementById('status');
+  const results = document.getElementById('results');
+  const output = document.getElementById('output');
+  const editorContainer = document.getElementById('editor-container');
+
+  function log(msg) {
+    const line = document.createElement('div');
+    line.textContent = msg;
+    results.appendChild(line);
+    results.scrollTop = results.scrollHeight;
+    console.log(msg);
+  }
+
+  function error(msg) {
+    const line = document.createElement('div');
+    line.textContent = '❌ ' + msg;
+    line.style.color = '#dc2626';
+    results.appendChild(line);
+    results.scrollTop = results.scrollHeight;
+    console.error(msg);
+  }
+
+  function success(msg) {
+    const line = document.createElement('div');
+    line.textContent = '✅ ' + msg;
+    line.style.color = '#16a34a';
+    results.appendChild(line);
+    results.scrollTop = results.scrollHeight;
+  }
+
+  async function testReact() {
+    log('Testing React import…');
+    try {
+      const React = await import('react');
+      success('React imported: ' + Object.keys(React).join(', '));
+      return React;
+    } catch (e) {
+      error('React failed: ' + e.message);
+      return null;
+    }
+  }
+
+  async function testDeps() {
+    log('Testing dependencies…');
+    try {
+      const [lucide, dompurify, mammoth] = await Promise.all([
+        import('lucide-react'),
+        import('isomorphic-dompurify'),
+        import('mammoth/mammoth.browser')
+      ]);
+      success('lucide-react: ' + Object.keys(lucide).length + ' exports');
+      success('isomorphic-dompurify: loaded');
+      success('mammoth/mammoth.browser: loaded');
+    } catch (e) {
+      error('Dependency failed: ' + e.message);
+    }
+  }
+
+  async function testEditor() {
+    log('Testing @storio/rich-text-editor import…');
+    try {
+      const mod = await import('@storio/rich-text-editor');
+      log('Editor module exports: ' + Object.keys(mod).join(', '));
+      if (typeof mod.RichTextEditor === 'function') {
+        success('RichTextEditor is a function');
+        
+        const React = await import('react');
+        const ReactDOM = await import('react-dom/client');
+        
+        editorContainer.innerHTML = '';
+        const root = ReactDOM.createRoot(editorContainer);
+        root.render(
+          React.createElement(mod.RichTextEditor, {
+            value: '<p>Hello from library!</p>',
+            onChange: (html) => { output.textContent = html; },
+            placeholder: 'Type…',
+            minHeight: 200,
+            onInsertImageClick: (cb) => {
+              const url = window.prompt('Image URL:');
+              if (url) cb(url);
+            }
+          })
+        );
+        success('Editor mounted successfully!');
+        status.textContent = 'Editor is working!';
+        status.style.color = '#16a34a';
+      } else {
+        error('RichTextEditor is not a function: ' + typeof mod.RichTextEditor);
+      }
+    } catch (e) {
+      error('Editor import failed: ' + e.message);
+      log('Stack: ' + e.stack);
+    }
+  }
+
+  document.getElementById('btn-test-import').addEventListener('click', testEditor);
+  document.getElementById('btn-test-react').addEventListener('click', testReact);
+  document.getElementById('btn-test-editor').addEventListener('click', testEditor);
+
+  (async () => {
+    await testReact();
+    await testDeps();
+    await testEditor();
+  })();
+</script>
+
+</body>
+</html>

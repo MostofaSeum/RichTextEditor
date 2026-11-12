@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 // @ts-expect-error: Mammoth browser entrypoint lacks TypeScript declaration file
 import * as mammoth from 'mammoth/mammoth.browser';
@@ -16,6 +16,9 @@ import {
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const DropdownContext = React.createContext<{ close: () => void } | null>(null);
+
+/** Layout effect that degrades to `useEffect` during SSR (no server warning). */
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,19 +102,120 @@ function ToolBtn({
     );
 }
 
+/**
+ * Renders a popover in a portal on `document.body` and positions it next to its
+ * trigger with fixed coordinates.
+ *
+ * The editor shell uses `overflow-hidden` (and a `transform` while fullscreen),
+ * so an `absolute` popover gets clipped or mispositioned. Portaling to the body
+ * keeps every menu fully visible, and the position is clamped to the viewport so
+ * menus near an edge flip or shift instead of running off-screen.
+ */
+function AnchoredPopover({
+    anchorRef, open, onClose, align = 'left', minWidth, maxHeight = 320, className = '', children,
+}: {
+    anchorRef: React.RefObject<HTMLElement | null>;
+    open: boolean;
+    onClose: () => void;
+    align?: 'left' | 'right';
+    minWidth?: number;
+    maxHeight?: number;
+    className?: string;
+    children: React.ReactNode;
+}) {
+    const panelRef = useRef<HTMLDivElement>(null);
+    const [pos, setPos] = useState<{ left: number; top: number; maxHeight: number } | null>(null);
+    const onCloseRef = useRef(onClose);
+    onCloseRef.current = onClose;
+
+    useIsomorphicLayoutEffect(() => {
+        if (!open) {
+            setPos(null);
+            return;
+        }
+
+        const GAP = 6;
+        const MARGIN = 8;
+
+        const update = () => {
+            const anchor = anchorRef.current;
+            const panel = panelRef.current;
+            if (!anchor || !panel) return;
+
+            const rect = anchor.getBoundingClientRect();
+            const vw = document.documentElement.clientWidth;
+            const vh = document.documentElement.clientHeight;
+            const width = panel.offsetWidth;
+            const naturalHeight = panel.scrollHeight;
+
+            let left = align === 'right' ? rect.right - width : rect.left;
+            left = Math.min(Math.max(MARGIN, left), Math.max(MARGIN, vw - width - MARGIN));
+
+            const below = vh - rect.bottom - GAP - MARGIN;
+            const above = rect.top - GAP - MARGIN;
+            const openUp = below < Math.min(naturalHeight, maxHeight) && above > below;
+            const room = Math.max(120, openUp ? above : below);
+            const panelHeight = Math.min(maxHeight, room);
+            const top = openUp
+                ? Math.max(MARGIN, rect.top - GAP - Math.min(naturalHeight, panelHeight))
+                : Math.min(rect.bottom + GAP, Math.max(MARGIN, vh - MARGIN - panelHeight));
+
+            setPos({ left, top, maxHeight: panelHeight });
+        };
+
+        update();
+        window.addEventListener('resize', update);
+        window.addEventListener('scroll', update, true);
+        return () => {
+            window.removeEventListener('resize', update);
+            window.removeEventListener('scroll', update, true);
+        };
+    }, [open, align, maxHeight, anchorRef]);
+
+    // Dismiss on outside click. Both the trigger and the portaled panel count as
+    // "inside", otherwise clicking a menu item would close it before it fires.
+    useEffect(() => {
+        if (!open) return;
+        const onDown = (e: MouseEvent) => {
+            const target = e.target as Node;
+            if (anchorRef.current?.contains(target)) return;
+            if (panelRef.current?.contains(target)) return;
+            onCloseRef.current();
+        };
+        document.addEventListener('mousedown', onDown, true);
+        return () => document.removeEventListener('mousedown', onDown, true);
+    }, [open, anchorRef]);
+
+    if (!open || typeof document === 'undefined') return null;
+
+    return createPortal(
+        <div
+            ref={panelRef}
+            className={className}
+            style={{
+                position: 'fixed',
+                zIndex: 2147482500,
+                left: pos ? pos.left : 0,
+                top: pos ? pos.top : 0,
+                minWidth,
+                maxWidth: 'calc(100vw - 16px)',
+                maxHeight: pos ? pos.maxHeight : maxHeight,
+                overflowY: 'auto',
+                // Hidden for the single measuring frame before `pos` is known.
+                visibility: pos ? 'visible' : 'hidden',
+            }}
+        >
+            {children}
+        </div>,
+        document.body,
+    );
+}
+
 function ToolDropdown({
     label, children, minW = 140, align = 'left',
 }: { label: React.ReactNode; children: React.ReactNode; minW?: number; align?: 'left' | 'right' }) {
     const [open, setOpen] = useState(false);
     const wrapRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const close = (e: MouseEvent) => {
-            if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-        };
-        document.addEventListener('mousedown', close);
-        return () => document.removeEventListener('mousedown', close);
-    }, []);
 
     return (
         <div ref={wrapRef} className="relative shrink-0">
@@ -123,16 +227,19 @@ function ToolDropdown({
                 {label}
                 <ChevronDown className="w-3 h-3 opacity-50" />
             </button>
-            {open && (
-                <DropdownContext.Provider value={{ close: () => setOpen(false) }}>
-                    <div
-                        className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} top-full mt-0.5 z-50 bg-white border border-gray-200 rounded-lg shadow-xl py-1 overflow-y-auto`}
-                        style={{ minWidth: minW, maxHeight: 240 }}
-                    >
-                        {children}
-                    </div>
-                </DropdownContext.Provider>
-            )}
+            <DropdownContext.Provider value={{ close: () => setOpen(false) }}>
+                <AnchoredPopover
+                    anchorRef={wrapRef}
+                    open={open}
+                    onClose={() => setOpen(false)}
+                    align={align}
+                    minWidth={minW}
+                    maxHeight={320}
+                    className="bg-white border border-gray-200 rounded-lg shadow-xl py-1"
+                >
+                    {children}
+                </AnchoredPopover>
+            </DropdownContext.Provider>
         </div>
     );
 }
@@ -147,7 +254,7 @@ function DropItem({ onClick, children, className = '' }: { onClick?: () => void;
                 onClick?.();
                 ctx?.close();
             }}
-            className={`w-full text-left px-3 py-1.5 text-sm hover:bg-indigo-50 text-slate-700 transition-colors ${className}`}
+            className={`block w-full text-left px-3 py-1.5 text-sm hover:bg-indigo-50 text-slate-700 transition-colors ${className}`}
         >
             {children}
         </button>
@@ -163,14 +270,6 @@ function TablePickerBtn({ onInsert }: { onInsert: (rows: number, cols: number) =
     const [hovered, setHovered] = useState<{ row: number; col: number } | null>(null);
     const wrapRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        const close = (e: MouseEvent) => {
-            if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-        };
-        document.addEventListener('mousedown', close);
-        return () => document.removeEventListener('mousedown', close);
-    }, []);
-
     const label = hovered ? `${hovered.row} × ${hovered.col}` : 'Table';
 
     return (
@@ -184,45 +283,48 @@ function TablePickerBtn({ onInsert }: { onInsert: (rows: number, cols: number) =
                 <Table className="w-3.5 h-3.5" />
             </button>
 
-            {open && (
-                <div
-                    className="absolute left-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-2xl p-3 select-none"
-                    style={{ minWidth: 220 }}
-                >
-                    <p className="text-[10px] font-bold uppercase text-slate-400 mb-2 tracking-wider">
-                        {label}
-                    </p>
-                    <div className="flex flex-col gap-0.5">
-                        {Array.from({ length: TABLE_MAX }, (_, rowIdx) => (
-                            <div key={rowIdx} className="flex gap-0.5">
-                                {Array.from({ length: TABLE_MAX }, (_, colIdx) => {
-                                    const r = rowIdx + 1;
-                                    const c = colIdx + 1;
-                                    const isActive = hovered && r <= hovered.row && c <= hovered.col;
-                                    return (
-                                        <div
-                                            key={colIdx}
-                                            onMouseEnter={() => setHovered({ row: r, col: c })}
-                                            onMouseLeave={() => setHovered(null)}
-                                            onMouseDown={e => {
-                                                e.preventDefault();
-                                                onInsert(r, c);
-                                                setOpen(false);
-                                                setHovered(null);
-                                            }}
-                                            className={`w-6 h-6 border rounded cursor-pointer transition-all duration-75 ${isActive
-                                                    ? 'bg-primary-base/20 border-primary-base'
-                                                    : 'bg-gray-50 border-gray-200 hover:border-gray-400'
-                                                }`}
-                                        />
-                                    );
-                                })}
-                            </div>
-                        ))}
-                    </div>
-                    <p className="text-[10px] text-slate-400 mt-2 text-center">Click to insert table</p>
+            <AnchoredPopover
+                anchorRef={wrapRef}
+                open={open}
+                onClose={() => setOpen(false)}
+                align="left"
+                minWidth={220}
+                maxHeight={360}
+                className="bg-white border border-gray-200 rounded-xl shadow-2xl p-3 select-none"
+            >
+                <p className="text-[10px] font-bold uppercase text-slate-400 mb-2 tracking-wider">
+                    {label}
+                </p>
+                <div className="flex flex-col gap-0.5">
+                    {Array.from({ length: TABLE_MAX }, (_, rowIdx) => (
+                        <div key={rowIdx} className="flex gap-0.5">
+                            {Array.from({ length: TABLE_MAX }, (_, colIdx) => {
+                                const r = rowIdx + 1;
+                                const c = colIdx + 1;
+                                const isActive = hovered && r <= hovered.row && c <= hovered.col;
+                                return (
+                                    <div
+                                        key={colIdx}
+                                        onMouseEnter={() => setHovered({ row: r, col: c })}
+                                        onMouseLeave={() => setHovered(null)}
+                                        onMouseDown={e => {
+                                            e.preventDefault();
+                                            onInsert(r, c);
+                                            setOpen(false);
+                                            setHovered(null);
+                                        }}
+                                        className={`w-6 h-6 border rounded cursor-pointer transition-all duration-75 ${isActive
+                                                ? 'bg-primary-base/20 border-primary-base'
+                                                : 'bg-gray-50 border-gray-200 hover:border-gray-400'
+                                            }`}
+                                    />
+                                );
+                            })}
+                        </div>
+                    ))}
                 </div>
-            )}
+                <p className="text-[10px] text-slate-400 mt-2 text-center">Click to insert table</p>
+            </AnchoredPopover>
         </div>
     );
 }
@@ -235,14 +337,6 @@ function CustomHrBtn({ onInsert }: { onInsert: (style: string, size: string, col
     const [color, setColor] = useState('#cbd5e1');
     const wrapRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        const close = (e: MouseEvent) => {
-            if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-        };
-        document.addEventListener('mousedown', close);
-        return () => document.removeEventListener('mousedown', close);
-    }, []);
-
     return (
         <div ref={wrapRef} className="relative shrink-0">
             <button
@@ -254,11 +348,15 @@ function CustomHrBtn({ onInsert }: { onInsert: (style: string, size: string, col
                 <Minus className="w-3.5 h-3.5" />
             </button>
 
-            {open && (
-                <div
-                    className="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-2xl p-4 flex flex-col gap-3"
-                    style={{ minWidth: 260 }}
-                >
+            <AnchoredPopover
+                anchorRef={wrapRef}
+                open={open}
+                onClose={() => setOpen(false)}
+                align="right"
+                minWidth={260}
+                maxHeight={420}
+                className="bg-white border border-gray-200 rounded-xl shadow-2xl p-4 flex flex-col gap-3"
+            >
                     <p className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
                         Divider Designer
                     </p>
@@ -322,8 +420,7 @@ function CustomHrBtn({ onInsert }: { onInsert: (style: string, size: string, col
                     >
                         Insert Custom Divider
                     </button>
-                </div>
-            )}
+            </AnchoredPopover>
         </div>
     );
 }
@@ -791,14 +888,6 @@ function SymbolPickerBtn({ onInsert }: { onInsert: (char: string) => void }) {
     const [activeTab, setActiveTab] = useState<'Emojis' | 'Symbols' | 'Math' | 'Currency'>('Emojis');
     const wrapRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        const close = (e: MouseEvent) => {
-            if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-        };
-        document.addEventListener('mousedown', close);
-        return () => document.removeEventListener('mousedown', close);
-    }, []);
-
     const categoryMap: Record<typeof activeTab, string[]> = {
         Emojis: SYMBOL_CATEGORIES.Emojis,
         Symbols: SYMBOL_CATEGORIES.Arrows,
@@ -817,10 +906,15 @@ function SymbolPickerBtn({ onInsert }: { onInsert: (char: string) => void }) {
                 <Smile className="w-3.5 h-3.5" />
             </button>
 
-            {open && (
-                <div
-                    className="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-2xl p-3 flex flex-col gap-2 w-64 animate-fadeIn"
-                >
+            <AnchoredPopover
+                anchorRef={wrapRef}
+                open={open}
+                onClose={() => setOpen(false)}
+                align="right"
+                minWidth={256}
+                maxHeight={320}
+                className="bg-white border border-gray-200 rounded-xl shadow-2xl p-3 flex flex-col gap-2 animate-fadeIn"
+            >
                     <p className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
                         Symbols & Emojis
                     </p>
@@ -851,13 +945,21 @@ function SymbolPickerBtn({ onInsert }: { onInsert: (char: string) => void }) {
                             </button>
                         ))}
                     </div>
-                </div>
-            )}
+            </AnchoredPopover>
         </div>
     );
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
+
+/** True for an empty paragraph-like block that can hold the caret. */
+function isEmptyEditableBlock(node: Node | null): node is HTMLElement {
+    if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+    const el = node as HTMLElement;
+    if (!/^(P|DIV)$/.test(el.tagName)) return false;
+    if ((el.textContent ?? '').trim().length > 0) return false;
+    return !el.querySelector('img, svg, table, hr, iframe, video, canvas');
+}
 
 export function RichTextEditor({
     value,
@@ -872,6 +974,9 @@ export function RichTextEditor({
     const editorRef = useRef<HTMLDivElement>(null);
     const skipSync = useRef(false);
     const savedRange = useRef<Range | null>(null);
+    /** Latest HTML produced by the editor — used to restore content when the
+     *  editable node is re-created (e.g. moving in/out of the fullscreen portal). */
+    const latestHtml = useRef(value ?? '');
 
     const [showImageModal, setShowImageModal] = useState(false);
     const [imageUrlInput, setImageUrlInput] = useState('');
@@ -1048,8 +1153,10 @@ export function RichTextEditor({
 
     const handleInput = useCallback(() => {
         if (!editorRef.current) return;
+        const html = editorRef.current.innerHTML;
+        latestHtml.current = html;
         skipSync.current = true;
-        onChange(editorRef.current.innerHTML);
+        onChange(html);
         const text = editorRef.current.innerText ?? '';
         setWordCount(text.trim() ? text.trim().split(/\s+/).length : 0);
         setHasUnsavedChange(true);
@@ -1063,6 +1170,9 @@ export function RichTextEditor({
                 return;
             }
             let node = sel.anchorNode;
+            if (node && editorRef.current.contains(node)) {
+                savedRange.current = sel.getRangeAt(0).cloneRange();
+            }
             let found = false;
             while (node && node !== editorRef.current) {
                 if (node && (node.nodeName === 'TD' || node.nodeName === 'TH')) {
@@ -1186,6 +1296,7 @@ export function RichTextEditor({
             if (editorRef.current.innerHTML !== value) {
                 editorRef.current.innerHTML = value ?? '';
             }
+            latestHtml.current = value ?? '';
         }
         skipSync.current = false;
     }, [value]);
@@ -1241,12 +1352,108 @@ export function RichTextEditor({
         savedRange.current = null;
     }, [handleInput]);
 
-    const saveSelection = () => {
+    const saveSelection = useCallback(() => {
         const sel = window.getSelection();
-        if (sel && sel.rangeCount > 0) {
-            savedRange.current = sel.getRangeAt(0).cloneRange();
+        if (sel && sel.rangeCount > 0 && editorRef.current) {
+            const anchor = sel.anchorNode;
+            if (anchor && editorRef.current.contains(anchor)) {
+                savedRange.current = sel.getRangeAt(0).cloneRange();
+            }
         }
-    };
+    }, []);
+
+    /**
+     * Insert block-level HTML (shapes, tables, code blocks, templates) at the
+     * caret without letting the browser re-parse it inside the current inline
+     * context.
+     *
+     * `execCommand('insertHTML')` hands the fragment to the HTML parser in the
+     * context of the caret. When the caret sits inside a <p>, a <div> shape is
+     * not allowed there, so the browser drops the wrapper and keeps only its
+     * inline children — a rectangle becomes bare "[Process]" text. Inserting
+     * the parsed nodes with the Range API preserves the markup exactly.
+     */
+    const insertBlockHtml = useCallback((html: string) => {
+        const editor = editorRef.current;
+        if (!editor) return;
+
+        // Capture the caret before focusing: focusing a blurred contenteditable
+        // can move the caret to the start of the content.
+        const sel = window.getSelection();
+        let range: Range | null = null;
+        if (sel && sel.rangeCount > 0 && sel.anchorNode && editor.contains(sel.anchorNode)) {
+            range = sel.getRangeAt(0).cloneRange();
+        } else if (savedRange.current && editor.contains(savedRange.current.startContainer)) {
+            range = savedRange.current.cloneRange();
+        }
+
+        editor.focus();
+
+        if (range && sel) {
+            sel.removeAllRanges();
+            sel.addRange(range);
+        }
+
+        const template = document.createElement('template');
+        template.innerHTML = html.trim();
+        const nodes = Array.from(template.content.childNodes);
+        if (nodes.length === 0) return;
+
+        // Locate the top-level block (direct child of the editor) at the caret.
+        let block: Node | null = null;
+        if (range) {
+            if (range.startContainer === editor) {
+                block = null;
+            } else {
+                let node: Node | null = range.startContainer;
+                while (node && node.parentNode !== editor) node = node.parentNode;
+                block = node;
+            }
+        }
+
+        if (block && block.parentNode === editor) {
+            if (isEmptyEditableBlock(block)) {
+                // Replace an empty paragraph/heading so no blank line is left behind.
+                nodes.forEach((node) => editor.insertBefore(node, block));
+                block.remove();
+            } else {
+                let ref: Node = block;
+                nodes.forEach((node) => {
+                    editor.insertBefore(node, ref.nextSibling);
+                    ref = node;
+                });
+            }
+        } else {
+            // Empty editor or caret directly in the root.
+            nodes.forEach((node) => editor.appendChild(node));
+        }
+
+        // Guarantee an editable block after the insertion and put the caret there.
+        const last = nodes[nodes.length - 1];
+        let caretBlock: HTMLElement;
+        if (isEmptyEditableBlock(last)) {
+            caretBlock = last;
+        } else {
+            const next = last.nextSibling;
+            if (isEmptyEditableBlock(next)) {
+                caretBlock = next;
+            } else {
+                const paragraph = document.createElement('p');
+                paragraph.appendChild(document.createElement('br'));
+                last.parentNode?.insertBefore(paragraph, last.nextSibling);
+                caretBlock = paragraph;
+            }
+        }
+
+        const caret = document.createRange();
+        caret.selectNodeContents(caretBlock);
+        caret.collapse(false);
+        sel?.removeAllRanges();
+        sel?.addRange(caret);
+        savedRange.current = null;
+
+        handleInput();
+    }, [handleInput]);
 
     const forceLtr = useCallback(() => {
         if (!editorRef.current) return;
@@ -1263,26 +1470,221 @@ export function RichTextEditor({
 
     const applySize = (size: string) => {
         setCurrentSize(size);
-        editorRef.current?.focus();
+        const editor = editorRef.current;
+        if (!editor) return;
+        editor.focus();
+
+        const px = `${size}px`;
         const sel = window.getSelection();
-        if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
-            document.execCommand('fontSize', false, '3');
+        if (!sel || sel.rangeCount === 0 || !editor.contains(sel.anchorNode)) return;
+
+        const range = sel.getRangeAt(0);
+
+        // Collapsed caret: create a styled wrapper at the caret so the next
+        // typed characters inherit the chosen size.
+        if (range.collapsed) {
+            document.execCommand('styleWithCSS', false, 'false');
+            document.execCommand('fontSize', false, '7');
+
+            const fonts = Array.from(editor.querySelectorAll('font[size="7"]')) as HTMLElement[];
+            if (fonts.length > 0) {
+                const converted: HTMLElement[] = [];
+                fonts.forEach((font) => {
+                    const span = document.createElement('span');
+                    span.style.fontSize = px;
+                    while (font.firstChild) span.appendChild(font.firstChild);
+                    font.replaceWith(span);
+                    converted.push(span);
+                });
+
+                const caretTarget = converted[converted.length - 1];
+                if (caretTarget) {
+                    const caret = document.createRange();
+                    caret.selectNodeContents(caretTarget);
+                    caret.collapse(false);
+                    sel.removeAllRanges();
+                    sel.addRange(caret);
+                }
+            } else {
+                // Fallback: style the current block so newly typed text is sized.
+                let block = sel.anchorNode as HTMLElement | null;
+                while (
+                    block &&
+                    block !== editor &&
+                    !/^(P|DIV|LI|H[1-6]|BLOCKQUOTE|TD|TH|PRE)$/.test(block.nodeName)
+                ) {
+                    block = block.parentElement;
+                }
+                if (block && block !== editor) {
+                    block.style.fontSize = px;
+                }
+            }
+
+            handleInput();
             return;
         }
-        try {
-            const range = sel.getRangeAt(0);
-            const span = document.createElement('span');
-            span.style.fontSize = `${size}px`;
-            range.surroundContents(span);
-            handleInput();
-        } catch {
-            document.execCommand('fontSize', false, '3');
+
+        // Expanded selection: wrap every selected text node in its own span.
+        // This works even when the selection crosses paragraphs, list items,
+        // table cells or other block boundaries (the old surroundContents()
+        // implementation silently failed in those cases).
+        const root =
+            range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+                ? (range.commonAncestorContainer.parentNode as Node)
+                : range.commonAncestorContainer;
+
+        if (!root) return;
+
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+            acceptNode(node) {
+                if (!node.nodeValue || node.nodeValue.length === 0) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                return range.intersectsNode(node)
+                    ? NodeFilter.FILTER_ACCEPT
+                    : NodeFilter.FILTER_REJECT;
+            },
+        });
+
+        const textNodes: Text[] = [];
+        while (walker.nextNode()) {
+            textNodes.push(walker.currentNode as Text);
         }
+
+        const wrapped: HTMLElement[] = [];
+
+        textNodes.forEach((node) => {
+            const start = node === range.startContainer ? range.startOffset : 0;
+            const end = node === range.endContainer ? range.endOffset : node.length;
+            if (end <= start) return;
+
+            let target: Text = node;
+            if (start > 0) {
+                target = target.splitText(start);
+            }
+            if (end - start < target.length) {
+                target.splitText(end - start);
+            }
+
+            const span = document.createElement('span');
+            span.style.fontSize = px;
+            target.parentNode?.insertBefore(span, target);
+            span.appendChild(target);
+            wrapped.push(span);
+        });
+
+        if (wrapped.length > 0) {
+            const nextRange = document.createRange();
+            nextRange.setStartBefore(wrapped[0]);
+            nextRange.setEndAfter(wrapped[wrapped.length - 1]);
+            sel.removeAllRanges();
+            sel.addRange(nextRange);
+        }
+
+        handleInput();
+    };
+
+    /**
+     * Lists created by execCommand rely on the surrounding stylesheet for their
+     * markers. Tailwind's preflight removes those markers, so we bake the
+     * presentation into the HTML itself. That way the saved HTML renders
+     * correctly in the preview iframe and on the public page too.
+     */
+    const styleAllLists = useCallback(() => {
+        const editor = editorRef.current;
+        if (!editor) return;
+
+        editor.querySelectorAll('ul').forEach((node) => {
+            const el = node as HTMLUListElement;
+            el.style.listStyleType = 'disc';
+            el.style.listStylePosition = 'outside';
+            el.style.paddingLeft = '1.5rem';
+            el.style.margin = '0.6rem 0';
+        });
+
+        editor.querySelectorAll('ol').forEach((node) => {
+            const el = node as HTMLOListElement;
+            el.style.listStyleType = 'decimal';
+            el.style.listStylePosition = 'outside';
+            el.style.paddingLeft = '1.5rem';
+            el.style.margin = '0.6rem 0';
+        });
+
+        editor.querySelectorAll('li').forEach((node) => {
+            const el = node as HTMLLIElement;
+            el.style.display = 'list-item';
+            el.style.margin = '0.25rem 0';
+        });
+    }, []);
+
+    const toggleList = (kind: 'ul' | 'ol') => {
+        exec(kind === 'ul' ? 'insertUnorderedList' : 'insertOrderedList');
+        styleAllLists();
+        handleInput();
+    };
+
+    const findBlockquote = useCallback((): HTMLElement | null => {
+        const editor = editorRef.current;
+        const sel = window.getSelection();
+        if (!editor || !sel || sel.rangeCount === 0) return null;
+
+        let node: Node | null = sel.anchorNode;
+        while (node && node !== editor) {
+            if (node.nodeName === 'BLOCKQUOTE') return node as HTMLElement;
+            node = node.parentNode;
+        }
+        return null;
+    }, []);
+
+    const toggleBlockquote = () => {
+        const editor = editorRef.current;
+        if (!editor) return;
+
+        if (findBlockquote()) {
+            exec('formatBlock', 'p');
+
+            // Multi-block quotes (e.g. after pressing Enter inside one) may not
+            // be converted by formatBlock. Unwrap whatever is left so the button
+            // always toggles the quote off.
+            const leftover = findBlockquote();
+            if (leftover && leftover.parentNode) {
+                const parent = leftover.parentNode;
+                while (leftover.firstChild) {
+                    parent.insertBefore(leftover.firstChild, leftover);
+                }
+                leftover.remove();
+            }
+
+            handleInput();
+            return;
+        }
+
+        exec('formatBlock', 'blockquote');
+
+        editor.querySelectorAll('blockquote').forEach((node) => {
+            const el = node as HTMLElement;
+            el.style.borderLeft = '4px solid #3b82f6';
+            el.style.padding = '0.75rem 1.25rem';
+            el.style.margin = '1rem 0';
+            el.style.color = '#475569';
+            el.style.fontStyle = 'italic';
+            el.style.background = '#f8fafc';
+            el.style.borderRadius = '0 8px 8px 0';
+        });
+
+        handleInput();
     };
 
     const applyHeading = (tag: string, label: string) => {
         setCurrentHeading(label);
-        exec('formatBlock', tag);
+        // Modern browsers like Chrome expect clean tag names like 'h1' or 'p',
+        // but legacy browsers or some WebKit engines expect '<h1'>.
+        // We try the standard tag, and if it fails or hasn't created the tag, fallback to <tag>.
+        try {
+            exec('formatBlock', tag);
+        } catch {
+            exec('formatBlock', `<${tag}>`);
+        }
     };
 
     const insertLink = () => {
@@ -1337,10 +1739,8 @@ export function RichTextEditor({
             `<tr>${Array(cols).fill('<td>&nbsp;</td>').join('')}</tr>`
         ).join('');
         const tableHtml = `<table style="width:100%;"><thead>${headerRow}</thead><tbody>${bodyRows}</tbody></table><p><br/></p>`;
-        editorRef.current?.focus();
-        document.execCommand('insertHTML', false, tableHtml);
-        handleInput();
-    }, [handleInput]);
+        insertBlockHtml(tableHtml);
+    }, [insertBlockHtml]);
 
     const getActiveTableElements = useCallback(() => {
         const sel = window.getSelection();
@@ -1670,14 +2070,16 @@ export function RichTextEditor({
         ctx.lineWidth = brushWidth;
 
         const rect = canvas.getBoundingClientRect();
+        const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
+        const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
         let x = 0;
         let y = 0;
         if ('touches' in e && e.touches.length > 0) {
-            x = e.touches[0].clientX - rect.left;
-            y = e.touches[0].clientY - rect.top;
+            x = (e.touches[0].clientX - rect.left) * scaleX;
+            y = (e.touches[0].clientY - rect.top) * scaleY;
         } else if ('clientX' in e) {
-            x = e.clientX - rect.left;
-            y = e.clientY - rect.top;
+            x = (e.clientX - rect.left) * scaleX;
+            y = (e.clientY - rect.top) * scaleY;
         }
 
         ctx.beginPath();
@@ -1693,14 +2095,16 @@ export function RichTextEditor({
         if (!ctx) return;
 
         const rect = canvas.getBoundingClientRect();
+        const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
+        const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
         let x = 0;
         let y = 0;
         if ('touches' in e && e.touches.length > 0) {
-            x = e.touches[0].clientX - rect.left;
-            y = e.touches[0].clientY - rect.top;
+            x = (e.touches[0].clientX - rect.left) * scaleX;
+            y = (e.touches[0].clientY - rect.top) * scaleY;
         } else if ('clientX' in e) {
-            x = e.clientX - rect.left;
-            y = e.clientY - rect.top;
+            x = (e.clientX - rect.left) * scaleX;
+            y = (e.clientY - rect.top) * scaleY;
         }
 
         ctx.lineTo(x, y);
@@ -1754,8 +2158,7 @@ export function RichTextEditor({
         } else if (type === 'arrow-down') {
             html = `<div title="Drag bottom-right corner to resize arrow" style="display: inline-block; width: 48px; height: 80px; min-width: 20px; min-height: 30px; resize: both; overflow: hidden; margin: 0 6px; cursor: move; vertical-align: middle;"><svg width="100%" height="100%" viewBox="0 0 60 100" style="display: block;"><path d="M 20,0 L 20,60 L 0,60 L 30,100 L 60,60 L 40,60 L 40,0 Z" fill="#3b82f6" stroke="#1d4ed8" stroke-width="2" style="filter: drop-shadow(0px 3px 5px rgba(29,78,216,0.3));" /></svg></div>`;
         }
-        document.execCommand('insertHTML', false, html);
-        handleInput();
+        insertBlockHtml(html);
     };
 
     const handleWordImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1856,12 +2259,74 @@ export function RichTextEditor({
         setMounted(true);
     }, []);
 
+    // The editor DOM is re-created when it moves into / out of the fullscreen
+    // portal, so restore the latest content (which may be newer than the
+    // `value` prop when the consumer is not fully controlled).
+    useEffect(() => {
+        const editor = editorRef.current;
+        if (editor) {
+            const html = latestHtml.current ?? '';
+            if (editor.innerHTML !== html) {
+                editor.innerHTML = html;
+            }
+        }
+        skipSync.current = false;
+    }, [isFullscreen]);
+
+    // Lock page scrolling while fullscreen and allow Esc to exit.
+    useEffect(() => {
+        if (!isFullscreen) return;
+
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setIsFullscreen(false);
+        };
+        window.addEventListener('keydown', onKeyDown);
+
+        return () => {
+            document.body.style.overflow = previousOverflow;
+            window.removeEventListener('keydown', onKeyDown);
+        };
+    }, [isFullscreen]);
+
+    // Esc also closes the image / canvas dialogs.
+    useEffect(() => {
+        if (!showImageModal && !showDrawModal) return;
+
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                setShowImageModal(false);
+                setShowDrawModal(false);
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [showImageModal, showDrawModal]);
+
     const toggleFullscreen = () => {
         setIsFullscreen(prev => !prev);
     };
 
+    const fullscreenStyles: React.CSSProperties = {
+        position: 'fixed',
+        inset: 0,
+        zIndex: 2147482000,
+        width: '100vw',
+        height: '100vh',
+        margin: 0,
+        borderRadius: 0,
+        border: 'none',
+        overflow: 'hidden',
+    };
+
     const editorContent = (
-        <div className={`border border-gray-200 rounded-2xl overflow-hidden shadow-sm bg-white flex flex-col ${className} ${isFullscreen ? '!fixed !inset-0 !z-[999999] !w-screen !h-screen !rounded-none !m-0 !border-none' : ''}`}>
+        <div
+            className={`border border-gray-200 rounded-2xl overflow-hidden shadow-sm bg-white flex flex-col ${className}`}
+            style={isFullscreen ? fullscreenStyles : undefined}
+        >
 
             {showDraftBanner && (
                 <div className="bg-indigo-50 border-b border-indigo-100 px-4 py-2.5 flex items-center justify-between animate-fadeIn text-xs text-indigo-900 font-semibold select-none">
@@ -1918,7 +2383,7 @@ export function RichTextEditor({
                     ))}
                 </ToolDropdown>
 
-                <ToolDropdown label={`${currentSize}pt`} minW={80}>
+                <ToolDropdown label={`${currentSize}px`} minW={80}>
                     {SIZES.map(s => (
                         <DropItem key={s} onClick={() => applySize(s)}>
                             <span style={{ fontSize: `${Math.min(parseInt(s), 24)}px` }}>{s}</span>
@@ -2039,20 +2504,20 @@ export function RichTextEditor({
 
                 <Divider />
 
-                <ToolBtn onClick={() => exec('insertUnorderedList')} title="Bullet List"><List className="w-3.5 h-3.5" /></ToolBtn>
-                <ToolBtn onClick={() => exec('insertOrderedList')} title="Numbered List"><ListOrdered className="w-3.5 h-3.5" /></ToolBtn>
+                <ToolBtn onClick={() => toggleList('ul')} title="Bullet List"><List className="w-3.5 h-3.5" /></ToolBtn>
+                <ToolBtn onClick={() => toggleList('ol')} title="Numbered List"><ListOrdered className="w-3.5 h-3.5" /></ToolBtn>
                 <ToolBtn onClick={() => exec('outdent')} title="Outdent"><Outdent className="w-3.5 h-3.5" /></ToolBtn>
                 <ToolBtn onClick={() => exec('indent')} title="Indent"><Indent className="w-3.5 h-3.5" /></ToolBtn>
 
                 <Divider />
 
                 <ToolBtn
-                    onClick={() => exec('insertHTML', '<pre style="background:#f1f5f9;padding:8px 12px;border-radius:6px;font-family:monospace;font-size:13px"><code></code></pre><p><br/></p>')}
+                    onClick={() => insertBlockHtml('<pre style="background:#f1f5f9;padding:8px 12px;border-radius:6px;font-family:monospace;font-size:13px"><code></code></pre><p><br/></p>')}
                     title="Code Block"
                 >
                     <Code className="w-3.5 h-3.5" />
                 </ToolBtn>
-                <ToolBtn onClick={() => exec('formatBlock', 'blockquote')} title="Blockquote">
+                <ToolBtn onClick={toggleBlockquote} title="Blockquote">
                     <Quote className="w-3.5 h-3.5" />
                 </ToolBtn>
                 <CustomHrBtn onInsert={insertCustomHr} />
@@ -2190,9 +2655,7 @@ export function RichTextEditor({
                         <DropItem
                             key={t.name}
                             onClick={() => {
-                                editorRef.current?.focus();
-                                document.execCommand('insertHTML', false, t.html);
-                                handleInput();
+                                insertBlockHtml(t.html);
                             }}
                         >
                             <span className="text-xs font-semibold text-gray-700">{t.name}</span>
@@ -2405,7 +2868,7 @@ export function RichTextEditor({
                     onFocus={forceLtr}
                     data-placeholder={placeholder}
                     className="grow outline-none px-5 py-4 text-slate-700 text-sm text-left overflow-y-auto rte-content w-full"
-                    style={{ minHeight }}
+                    style={{ minHeight: isFullscreen ? 0 : minHeight }}
                 />
 
                 {selectedImg && resizerRect && (
@@ -2568,9 +3031,41 @@ export function RichTextEditor({
                 )}
             </div>
 
-            {showDrawModal && (
-                <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-xs select-none animate-fadeIn">
-                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-[560px] flex flex-col gap-4 border border-gray-100 animate-slideUp">
+            {showDrawModal && mounted && createPortal(
+                <div
+                    className="rte-modal-overlay"
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 2147483000,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '1rem',
+                        background: 'rgba(15, 23, 42, 0.62)',
+                        backdropFilter: 'blur(2px)',
+                    }}
+                    onMouseDown={(e) => {
+                        if (e.target === e.currentTarget) setShowDrawModal(false);
+                    }}
+                >
+                    <div
+                        className="rte-modal-card"
+                        style={{
+                            background: '#ffffff',
+                            borderRadius: 18,
+                            boxShadow: '0 25px 60px -12px rgba(15, 23, 42, 0.45)',
+                            border: '1px solid #e2e8f0',
+                            width: '100%',
+                            maxWidth: 600,
+                            maxHeight: '92vh',
+                            overflowY: 'auto',
+                            padding: 24,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 16,
+                        }}
+                    >
                         <div className="flex items-center justify-between border-b border-gray-100 pb-3">
                             <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
                                 🎨 Signature & Canvas Freehand Sketch
@@ -2597,7 +3092,7 @@ export function RichTextEditor({
                                 onTouchMove={draw}
                                 onTouchEnd={stopDrawing}
                                 className="cursor-crosshair bg-white"
-                                style={{ width: 512, height: 280 }}
+                                style={{ width: '100%', maxWidth: 512, height: 'auto', aspectRatio: '512 / 280', touchAction: 'none', display: 'block' }}
                             />
                         </div>
 
@@ -2656,13 +3151,46 @@ export function RichTextEditor({
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* Universal Image Insertion Modal */}
-            {showImageModal && (
-                <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-xs select-none animate-fadeIn">
-                    <div className="bg-white rounded-2xl shadow-2xl p-6 w-[480px] flex flex-col gap-4 border border-gray-100 animate-slideUp">
+            {showImageModal && mounted && createPortal(
+                <div
+                    className="rte-modal-overlay"
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 2147483000,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '1rem',
+                        background: 'rgba(15, 23, 42, 0.62)',
+                        backdropFilter: 'blur(2px)',
+                    }}
+                    onMouseDown={(e) => {
+                        if (e.target === e.currentTarget) setShowImageModal(false);
+                    }}
+                >
+                    <div
+                        className="rte-modal-card"
+                        style={{
+                            background: '#ffffff',
+                            borderRadius: 18,
+                            boxShadow: '0 25px 60px -12px rgba(15, 23, 42, 0.45)',
+                            border: '1px solid #e2e8f0',
+                            width: '100%',
+                            maxWidth: 500,
+                            maxHeight: '92vh',
+                            overflowY: 'auto',
+                            padding: 24,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 16,
+                        }}
+                    >
                         <div className="flex items-center justify-between border-b border-gray-100 pb-3">
                             <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
                                 <ImageIcon className="w-4 h-4 text-indigo-600" />
@@ -2768,7 +3296,8 @@ export function RichTextEditor({
                             </div>
                         )}
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

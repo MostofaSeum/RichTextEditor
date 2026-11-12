@@ -17,6 +17,15 @@
     "./styles.css": {
       "types": "./dist/styles.d.ts",
       "default": "./dist/styles.css"
+    },
+    "./content.css": {
+      "types": "./dist/content.d.ts",
+      "default": "./dist/content.css"
+    },
+    "./content-styles": {
+      "types": "./dist/contentStyles.d.ts",
+      "import": "./dist/contentStyles.mjs",
+      "require": "./dist/contentStyles.js"
     }
   },
   "files": [
@@ -24,12 +33,14 @@
     "README.md"
   ],
   "sideEffects": [
-    "./dist/styles.css"
+    "./dist/styles.css",
+    "./dist/content.css"
   ],
   "scripts": {
+    "build:content": "node scripts/build-content-css.mjs",
     "build:css": "tailwindcss -i ./src/styles.css -o ./dist/styles.css --minify",
     "build:js": "tsup",
-    "build": "npm run build:css && npm run build:js",
+    "build": "npm run build:content && npm run build:css && npm run build:js",
     "dev": "tsup --watch",
     "test:ui": "vite",
     "prepublishOnly": "npm run build"

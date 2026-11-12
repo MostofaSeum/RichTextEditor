@@ -12,6 +12,7 @@ Designed for production web apps, CMS platforms, and SaaS dashboards. It gives t
    - [A. Visual Word-Style Editor (`<RichTextEditor />`)](#a-visual-word-style-editor-richtexteditor-)
    - [B. Multi-Tab Customizer (`<CodePenEditor />`)](#b-multi-tab-customizer-codepeneditor-)
    - [C. Public Blog Reader (`<RichTextRenderer />`)](#c-public-blog-reader-richtextrenderer-)
+   - [D. Styling Saved HTML Anywhere (`content.css` / `richTextContentCss`)](#d-styling-saved-html-anywhere-contentcss--richtextcontentcss)
 3. [Image System (Upload, Drag-and-Drop, Paste & Resize)](#-image-system)
 4. [Saving to Databases (Django, Node, Postgres, MongoDB, etc.)](#-saving-to-databases)
 5. [Controlling Size, Spacing & Miniature Output](#-controlling-size-spacing--miniature-output)
@@ -151,6 +152,42 @@ export function BlogPostPage({ post }: { post: { title: string; content: string 
 
 ---
 
+### D. Styling Saved HTML Anywhere (`content.css` / `richTextContentCss`)
+The editor bakes the important presentation (list markers, quote borders, font sizes) into the saved HTML itself, so content survives sanitizers and stays portable. Some things — heading sizes, paragraph spacing, table borders — still come from a stylesheet.
+
+Tailwind's preflight removes list markers, heading sizes, paragraph margins and blockquote borders, which makes saved articles look flat on a public page. The library ships a small shared stylesheet that restores them for the three standard containers (`.rte-content`, `.rich-text-content`, `.rich-article-content`).
+
+**Option 1 — import the standalone CSS file** (for pages that render saved HTML without loading the editor UI):
+
+```tsx
+import '@storio/rich-text-editor/content.css';
+```
+
+> If you already import `@storio/rich-text-editor/styles.css`, these rules are bundled in — no extra import is needed.
+
+**Option 2 — inject the CSS string** (scoped containers, preview iframes, portals, or anywhere a global import is awkward):
+
+```tsx
+// Import from the lightweight subpath — it bundles only the CSS string (~5 KB),
+// not the editor, icons or the Word importer.
+import { richTextContentCss } from '@storio/rich-text-editor/content-styles';
+
+export function ArticleBody({ html }: { html: string }) {
+  return (
+    <article className="rich-article-content">
+      <style dangerouslySetInnerHTML={{ __html: richTextContentCss }} />
+      <div dangerouslySetInnerHTML={{ __html: html }} />
+    </article>
+  );
+}
+```
+
+`<CodePenEditor />` injects this automatically into its live preview iframe, so the preview matches the published page.
+
+> **Note:** the source of truth is `src/content.css`. After editing it, run `npm run build:content` to regenerate `src/contentStyles.ts` and `dist/content.css`.
+
+---
+
 ## 🖼️ Image System
 
 The library provides a modern image pipeline with zero required setup:
@@ -270,9 +307,22 @@ To display an article as a small preview card or sidebar widget:
 
 ---
 
+### Package exports
+| Export | Type | Description |
+| :--- | :--- | :--- |
+| `RichTextEditor` | Component | Word-style visual editor |
+| `CodePenEditor` | Component | Visual + HTML/CSS/JS tabs with live preview |
+| `RichTextRenderer` | Component | Renders saved HTML, CSS and scripts |
+| `richTextContentCss` | `string` | Content stylesheet for saved HTML (inject into `<style>`) |
+| `@storio/rich-text-editor/content-styles` | subpath | Lightweight export of `richTextContentCss` (no editor code) |
+| `@storio/rich-text-editor/styles.css` | CSS file | Editor UI styles (required once) |
+| `@storio/rich-text-editor/content.css` | CSS file | Standalone content styles (already bundled in `styles.css`) |
+
+---
+
 ## ✨ Features Included
 
-- **MS Word-Parity Typography**: Paragraphs, Headings (H1–H6), 7 font families, font sizes (8pt–72pt), line-height spacing.
+- **MS Word-Parity Typography**: Paragraphs, Headings (H1–H6), 7 font families, font sizes (8px–72px), line-height spacing.
 - **Inline Styling**: Bold, Italic, Underline, Strikethrough, Superscript, Subscript.
 - **Transformations**: UPPERCASE, lowercase, and Capitalize Each Word.
 - **WordArt**: 6 3D text effect presets (Neon Blue, Gold Gloss, Retro 3D, Emerald Glow, Metallic Silver, Shadow Outline).

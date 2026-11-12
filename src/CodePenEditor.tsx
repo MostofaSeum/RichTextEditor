@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { RichTextEditor } from './RichTextEditor';
+import { richTextContentCss } from './contentStyles';
 import { Eye, Code, Paintbrush, Sparkles } from 'lucide-react';
 
 export interface CodeOutput {
@@ -94,10 +95,11 @@ ${newJs}
       background-color: #ffffff;
       line-height: 1.6;
     }
+    ${richTextContentCss}
     ${css}
   </style>
 </head>
-<body>
+<body class="rich-text-content">
   ${html}
   <script>
     try {

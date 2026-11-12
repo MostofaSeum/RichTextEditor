@@ -1,5 +1,6 @@
 @import "tailwindcss";
-@source "./RichTextEditor.tsx";
+@import "./content.css";
+@source "./**/*.{tsx,ts}";
 
 .rte-content {
   min-height: 280px;

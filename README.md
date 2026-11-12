@@ -1,21 +1,21 @@
-# @storio/rich-text-editor 🚀
+# @storio/rich-text-editor
 
 A plug-and-play, zero-config WYSIWYG rich text editor & code customizer library for **React** and **Next.js**.
 
-Designed for production web apps, CMS platforms, and SaaS dashboards. It gives teammates full Word-style visual editing, separated **HTML / CSS / JavaScript** tabs, drag-and-drop image uploading with corner drag-to-resize, and a matching reader renderer component.
+Designed for production web apps, CMS platforms, and SaaS dashboards. It gives your team full Word-style visual editing, dedicated **HTML / CSS / JavaScript** tabs with live previews, drag-and-drop image uploading with corner drag-to-resize, and matching reader components.
 
 ---
 
 ## Table of Contents
 1. [Installation](#-installation)
 2. [Quick Start](#-quick-start)
-   - [A. Visual Word-Style Editor (`<RichTextEditor />`)](#a-visual-word-style-editor-richtexteditor-)
-   - [B. Multi-Tab Customizer (`<CodePenEditor />`)](#b-multi-tab-customizer-codepeneditor-)
-   - [C. Public Blog Reader (`<RichTextRenderer />`)](#c-public-blog-reader-richtextrenderer-)
+   - [A. Visual Word-Style Editor (`<RichTextEditor />`)](#a-visual-word-style-editor-richtexteditor)
+   - [B. Multi-Tab Customizer (`<CodePenEditor />`)](#b-multi-tab-customizer-codepeneditor)
+   - [C. Public Blog Reader (`<RichTextRenderer />`)](#c-public-blog-reader-richtextrenderer)
    - [D. Styling Saved HTML Anywhere (`content.css` / `richTextContentCss`)](#d-styling-saved-html-anywhere-contentcss--richtextcontentcss)
 3. [Image System (Upload, Drag-and-Drop, Paste & Resize)](#-image-system)
 4. [Saving to Databases (Django, Node, Postgres, MongoDB, etc.)](#-saving-to-databases)
-5. [Controlling Size, Spacing & Miniature Output](#-controlling-size-spacing--miniature-output)
+5. [Controlling Size, Spacing & Container Width](#-controlling-size-spacing--container-width)
 6. [Props & API Reference](#-props--api-reference)
 7. [Features Included](#-features-included)
 
@@ -23,17 +23,26 @@ Designed for production web apps, CMS platforms, and SaaS dashboards. It gives t
 
 ## 📦 Installation
 
-Install into your React 18+ or Next.js app:
+Install directly into any React 18+ or Next.js app using the repository URL:
 
 ```bash
-# If installing from npm (or internal organization registry):
-npm install @storio/rich-text-editor
+# Recommended: Install directly via GitHub repository
+npm install github:MostofaSeum/RichTextEditor
 
-# OR install from Git:
-npm install git+https://github.com/MostofaSeum/RichTextEditor.git
+# OR with yarn:
+yarn add github:MostofaSeum/RichTextEditor
 
-# OR install from a local workspace directory:
-npm install "d:/Brainicon Technology/RichTextEditor"
+# OR with pnpm:
+pnpm add github:MostofaSeum/RichTextEditor
+```
+
+### In `package.json`:
+```json
+{
+  "dependencies": {
+    "@storio/rich-text-editor": "github:MostofaSeum/RichTextEditor#main"
+  }
+}
 ```
 
 ### Peer Dependencies
@@ -41,13 +50,13 @@ Requires React 18 or 19:
 ```bash
 npm install react react-dom
 ```
-> **Note:** TailwindCSS is **not required** in consumer apps. All styles are bundled and minified in `@storio/rich-text-editor/styles.css`.
+> **Note:** TailwindCSS is **not required** in consumer apps. All editor and toolbar styles are self-contained and pre-bundled in `@storio/rich-text-editor/styles.css`.
 
 ---
 
 ## 🚀 Quick Start
 
-Always import the bundled CSS once in your app or component:
+Always import the bundled editor styles once in your component or root layout:
 ```tsx
 import '@storio/rich-text-editor/styles.css';
 ```
@@ -83,7 +92,7 @@ export function SimpleArticleEditor() {
 ---
 
 ### B. Multi-Tab Customizer (`<CodePenEditor />`)
-For power users who need dedicated sections for **Visual Editor**, **HTML**, **CSS**, and **JavaScript** with a live sandboxed combined preview:
+For CMS or power users who need dedicated tabs for **Visual Editor**, **HTML**, **CSS**, and **JavaScript** with a live sandboxed combined preview:
 
 ```tsx
 'use client';
@@ -114,11 +123,20 @@ export function AdvancedPostCustomizer() {
     <div style={{ maxWidth: 1000, margin: '2rem auto' }}>
       <CodePenEditor
         onChange={setPostData}
-        minHeight={360}
+        minHeight={450}
       />
       <button
         onClick={handleSave}
-        style={{ marginTop: '1rem', padding: '10px 20px', background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 'bold' }}
+        style={{
+          marginTop: '1rem',
+          padding: '10px 20px',
+          background: '#4f46e5',
+          color: '#fff',
+          border: 'none',
+          borderRadius: 8,
+          cursor: 'pointer',
+          fontWeight: 'bold',
+        }}
       >
         Save &amp; Publish Post
       </button>
@@ -153,23 +171,19 @@ export function BlogPostPage({ post }: { post: { title: string; content: string 
 ---
 
 ### D. Styling Saved HTML Anywhere (`content.css` / `richTextContentCss`)
-The editor bakes the important presentation (list markers, quote borders, font sizes) into the saved HTML itself, so content survives sanitizers and stays portable. Some things — heading sizes, paragraph spacing, table borders — still come from a stylesheet.
+The editor bakes structural styling into the saved HTML, but elements like headings (H1–H6), blockquote borders, list bullets, and table outlines require CSS rules to override Tailwind preflight resets.
 
-Tailwind's preflight removes list markers, heading sizes, paragraph margins and blockquote borders, which makes saved articles look flat on a public page. The library ships a small shared stylesheet that restores them for the three standard containers (`.rte-content`, `.rich-text-content`, `.rich-article-content`).
+The library exports a dedicated lightweight stylesheet that formats these containers (`.rte-content`, `.rich-text-content`, `.rich-article-content`):
 
-**Option 1 — import the standalone CSS file** (for pages that render saved HTML without loading the editor UI):
-
+#### Option 1: Import the standalone CSS file
 ```tsx
 import '@storio/rich-text-editor/content.css';
 ```
+*(If you already import `@storio/rich-text-editor/styles.css`, these rules are already included)*
 
-> If you already import `@storio/rich-text-editor/styles.css`, these rules are bundled in — no extra import is needed.
-
-**Option 2 — inject the CSS string** (scoped containers, preview iframes, portals, or anywhere a global import is awkward):
-
+#### Option 2: Inject the CSS string (Scoped portals, iframes, or Next.js server components)
 ```tsx
-// Import from the lightweight subpath — it bundles only the CSS string (~5 KB),
-// not the editor, icons or the Word importer.
+// Imports only the lightweight CSS string (~5 KB) without bringing in editor code
 import { richTextContentCss } from '@storio/rich-text-editor/content-styles';
 
 export function ArticleBody({ html }: { html: string }) {
@@ -182,27 +196,23 @@ export function ArticleBody({ html }: { html: string }) {
 }
 ```
 
-`<CodePenEditor />` injects this automatically into its live preview iframe, so the preview matches the published page.
-
-> **Note:** the source of truth is `src/content.css`. After editing it, run `npm run build:content` to regenerate `src/contentStyles.ts` and `dist/content.css`.
-
 ---
 
 ## 🖼️ Image System
 
 The library provides a modern image pipeline with zero required setup:
 
-1. **Toolbar Modal**: Clicking the Image icon opens a clean modal with:
-   - **Upload from Computer**: Select file from local disk/gallery (`.png`, `.jpg`, `.webp`, `.gif`, `.svg`).
-   - **Image URL**: Enter external web URL.
+1. **Toolbar Modal**: Clicking the Image icon opens a clean dialog:
+   - **Upload from Computer**: Select file from local disk (`.png`, `.jpg`, `.webp`, `.gif`, `.svg`).
+   - **Image URL**: Enter any external web image URL.
 2. **Drag & Drop**: Drag any image file from your computer and drop it directly onto the editor.
-3. **Paste from Clipboard (`Ctrl + V`)**: Take a screenshot and paste directly into the text.
+3. **Paste from Clipboard (`Ctrl + V`)**: Copy or screenshot an image and paste it directly into the text.
 4. **Corner Drag-to-Resize**:
    - Click any image inside the editor to reveal **4 corner handles** and an alignment toolbar (Left, Center, Right, Full width, Reset, Delete).
-   - Drag any corner to scale the image up or down while **preserving original aspect ratio**.
+   - Drag any corner to scale the image while **preserving original aspect ratio**.
 
 ### Cloud Storage (AWS S3, Cloudinary, Firebase, or Custom Backend)
-By default, images are converted to Base64 data URLs (zero server required). To store images on your own cloud bucket instead, pass `onUploadImage`:
+By default, images are converted to Base64 data URLs (zero server required). To store images on your cloud bucket instead, pass `onUploadImage`:
 
 ```tsx
 <RichTextEditor
@@ -222,15 +232,14 @@ By default, images are converted to Base64 data URLs (zero server required). To 
 
 ## 💾 Saving to Databases
 
-The editor outputs standard text strings. It requires **no special database plugins** and works with:
+The editor outputs standard text strings. It requires **no special database plugins** and works seamlessly with:
 - **Django (Python)**: `content = models.TextField()`
-- **Node.js / Express / NestJS**: String field
-- **Laravel / PHP**: `text` column
+- **Node.js / Express / NestJS**: `String` column
 - **Postgres / MySQL / SQLite**: `TEXT` or `LONGTEXT` column
-- **MongoDB / Supabase / Firebase**: String property
+- **MongoDB / Supabase / Firebase**: String field
 
 ### Recommended Save Pattern:
-When saving, always pass **`data.combinedHtml`**:
+When saving from `<CodePenEditor />`, use **`data.combinedHtml`**:
 ```ts
 const payload = {
   title: title,
@@ -244,29 +253,15 @@ When loading it back to display on the blog:
 
 ---
 
-## 📐 Controlling Size, Spacing & Miniature Output
+## 📐 Controlling Size, Spacing & Container Width
 
 The editor and renderer are **100% fluid (`w-full`)** and adapt to whatever container they sit inside:
 
-### 1. In Dashboard Layouts (Beside a Sidebar)
+### In Dashboard Layouts (Beside a Sidebar)
 Wrap the editor in any container. It will not overflow or break sidebar navigation:
 ```tsx
 <div className="flex-1 max-w-5xl mx-auto p-6">
   <RichTextEditor value={content} onChange={setContent} minHeight={450} />
-</div>
-```
-
-### 2. Creating a Compact / Miniature Output Card
-To display an article as a small preview card or sidebar widget:
-```tsx
-// Method A: Wrap in small container
-<div style={{ maxWidth: '380px', fontSize: '13px', padding: '12px' }}>
-  <RichTextRenderer html={post.content} />
-</div>
-
-// Method B: Miniature zoom scale (50% or 75% thumbnail)
-<div style={{ transform: 'scale(0.75)', transformOrigin: 'top left' }}>
-  <RichTextRenderer html={post.content} />
 </div>
 ```
 
@@ -289,9 +284,9 @@ To display an article as a small preview card or sidebar widget:
 ### `<CodePenEditor />`
 | Prop | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `initialHtml` | `string` | Preset HTML | Initial markup string |
-| `initialCss` | `string` | Preset CSS | Initial custom stylesheet |
-| `initialJs` | `string` | Preset JS | Initial custom JavaScript |
+| `initialHtml` | `string` | `''` | Initial markup string |
+| `initialCss` | `string` | `''` | Initial custom stylesheet |
+| `initialJs` | `string` | `''` | Initial custom JavaScript |
 | `onChange` | `(output: CodeOutput) => void` | `undefined` | Emits `{ html, css, js, combinedHtml }` |
 | `minHeight` | `number` | `350` | Minimum height in pixels |
 | `showPreview` | `boolean` | `true` | Show/hide the live combined preview iframe |
@@ -307,15 +302,15 @@ To display an article as a small preview card or sidebar widget:
 
 ---
 
-### Package exports
+### Package Exports
 | Export | Type | Description |
 | :--- | :--- | :--- |
 | `RichTextEditor` | Component | Word-style visual editor |
 | `CodePenEditor` | Component | Visual + HTML/CSS/JS tabs with live preview |
-| `RichTextRenderer` | Component | Renders saved HTML, CSS and scripts |
+| `RichTextRenderer` | Component | Renders saved HTML, CSS, and scripts |
 | `richTextContentCss` | `string` | Content stylesheet for saved HTML (inject into `<style>`) |
-| `@storio/rich-text-editor/content-styles` | subpath | Lightweight export of `richTextContentCss` (no editor code) |
-| `@storio/rich-text-editor/styles.css` | CSS file | Editor UI styles (required once) |
+| `@storio/rich-text-editor/content-styles` | Subpath | Lightweight export of `richTextContentCss` (no editor code) |
+| `@storio/rich-text-editor/styles.css` | CSS file | Editor UI styles (import once) |
 | `@storio/rich-text-editor/content.css` | CSS file | Standalone content styles (already bundled in `styles.css`) |
 
 ---

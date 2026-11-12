@@ -41,6 +41,7 @@
     "build:css": "tailwindcss -i ./src/styles.css -o ./dist/styles.css --minify",
     "build:js": "tsup",
     "build": "npm run build:content && npm run build:css && npm run build:js",
+    "prepare": "npm run build",
     "dev": "tsup --watch",
     "test:ui": "vite",
     "prepublishOnly": "npm run build"

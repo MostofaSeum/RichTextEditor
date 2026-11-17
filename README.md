@@ -92,7 +92,7 @@ export function SimpleArticleEditor() {
 ---
 
 ### B. Multi-Tab Customizer (`<CodePenEditor />`)
-For CMS or power users who need dedicated tabs for **Visual Editor**, **HTML**, **CSS**, and **JavaScript** with a live sandboxed combined preview:
+For CMS or power users: a **Visual Editor** tab plus a single **Code** tab where HTML, inline `<style>` CSS and inline `<script>` JS live together in one file, with a live sandboxed preview. Edits in the Visual tab only touch the markup; your `<style>` and `<script>` blocks are preserved.
 
 ```tsx
 'use client';
@@ -284,10 +284,9 @@ Wrap the editor in any container. It will not overflow or break sidebar navigati
 ### `<CodePenEditor />`
 | Prop | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `initialHtml` | `string` | `''` | Initial markup string |
-| `initialCss` | `string` | `''` | Initial custom stylesheet |
-| `initialJs` | `string` | `''` | Initial custom JavaScript |
-| `onChange` | `(output: CodeOutput) => void` | `undefined` | Emits `{ html, css, js, combinedHtml }` |
+| `initialCode` | `string` | demo snippet | Initial single-file source (HTML with inline `<style>` / `<script>`) |
+| `initialHtml` / `initialCss` / `initialJs` | `string` | `undefined` | **Deprecated.** Merged into one file when `initialCode` is not set |
+| `onChange` | `(output: CodeOutput) => void` | `undefined` | Emits `{ code, html, css, js, combinedHtml }` (`html`/`css`/`js` are extracted from `code`) |
 | `minHeight` | `number` | `350` | Minimum height in pixels |
 | `showPreview` | `boolean` | `true` | Show/hide the live combined preview iframe |
 | `onUploadImage` | `(file: File) => Promise<string> \| string` | `undefined` | Custom cloud uploader hook |
@@ -306,7 +305,7 @@ Wrap the editor in any container. It will not overflow or break sidebar navigati
 | Export | Type | Description |
 | :--- | :--- | :--- |
 | `RichTextEditor` | Component | Word-style visual editor |
-| `CodePenEditor` | Component | Visual + HTML/CSS/JS tabs with live preview |
+| `CodePenEditor` | Component | Visual + single-file Code tab (HTML/CSS/JS) with live preview |
 | `RichTextRenderer` | Component | Renders saved HTML, CSS, and scripts |
 | `richTextContentCss` | `string` | Content stylesheet for saved HTML (inject into `<style>`) |
 | `@storio/rich-text-editor/content-styles` | Subpath | Lightweight export of `richTextContentCss` (no editor code) |

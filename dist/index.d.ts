@@ -29,14 +29,25 @@ interface RichTextEditorProps {
 declare function RichTextEditor({ value, onChange, placeholder, minHeight, className, onUploadImage, onInsertImageClick, onInsertFileClick: _onInsertFileClick, }: RichTextEditorProps): React.JSX.Element;
 
 interface CodeOutput {
+    /** The full single-file source exactly as written (HTML with inline <style> and <script>). */
+    code: string;
+    /** Markup only (all <style> and <script> blocks removed). */
     html: string;
+    /** Concatenated contents of all inline <style> blocks. */
     css: string;
+    /** Concatenated contents of all inline <script> blocks (scripts with `src` are excluded). */
     js: string;
+    /** Ready-to-save output: styles, markup wrapped in `.blog-custom-content`, then scripts. */
     combinedHtml: string;
 }
 interface CodePenEditorProps {
+    /** Initial single-file source: HTML with inline <style> and <script> tags. */
+    initialCode?: string;
+    /** @deprecated Use `initialCode`. Merged into the single file when `initialCode` is not set. */
     initialHtml?: string;
+    /** @deprecated Use `initialCode`. Merged into the single file when `initialCode` is not set. */
     initialCss?: string;
+    /** @deprecated Use `initialCode`. Merged into the single file when `initialCode` is not set. */
     initialJs?: string;
     onChange?: (output: CodeOutput) => void;
     className?: string;
@@ -45,7 +56,7 @@ interface CodePenEditorProps {
     onUploadImage?: (file: File) => Promise<string> | string;
     onInsertImageClick?: (callback: (url: string) => void) => void;
 }
-declare function CodePenEditor({ initialHtml, initialCss, initialJs, onChange, className, minHeight, showPreview, onUploadImage, onInsertImageClick, }: CodePenEditorProps): React.JSX.Element;
+declare function CodePenEditor(props: CodePenEditorProps): React.JSX.Element;
 
 interface RichTextRendererProps {
     /** The HTML string (including <style> or <script> tags) to render */

@@ -10,10 +10,10 @@ function Playground() {
     <div style={{ maxWidth: 1200, margin: '24px auto', padding: '0 20px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       <header style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, margin: '0 0 6px 0', color: '#0f172a' }}>
-          Interactive Blog Customizer — Clean Separated Sections
+          Interactive Blog Customizer — Single-File Code
         </h1>
         <p style={{ margin: 0, color: '#64748b', fontSize: 14 }}>
-          Users have clean, dedicated sections for <strong>Visual Editor</strong>, <strong>HTML</strong>, <strong>CSS</strong>, and <strong>JS</strong>. The combined output updates live below!
+          Users edit in the <strong>Visual Editor</strong> or write a single <strong>Code</strong> file with HTML plus inline <code>&lt;style&gt;</code> and <code>&lt;script&gt;</code>. The output updates live below!
         </p>
       </header>
 
@@ -29,7 +29,7 @@ function Playground() {
           Generated Output Object (for your API / Database)
         </h3>
         <pre style={{ margin: 0, padding: 14, background: '#0f172a', color: '#38bdf8', borderRadius: 8, fontSize: 12, overflowX: 'auto', whiteSpace: 'pre-wrap' }}>
-          {output ? JSON.stringify({ html: output.html, css: output.css, js: output.js }, null, 2) : 'Type or edit to see output...'}
+          {output ? JSON.stringify({ code: output.code, combinedHtml: output.combinedHtml }, null, 2) : 'Type or edit to see output...'}
         </pre>
       </div>
     </div>

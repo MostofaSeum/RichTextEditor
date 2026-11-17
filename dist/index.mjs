@@ -3268,55 +3268,130 @@ var richTextContentCss = `/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2
 `;
 
 // src/CodePenEditor.tsx
-import { Eye, Code as Code2, Paintbrush, Sparkles } from "lucide-react";
+import { Eye, Code as Code2, Sparkles } from "lucide-react";
 import { jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
-function CodePenEditor({
-  initialHtml = '<h2>Welcome to My Custom Blog Section \u{1F680}</h2>\n<p>Edit this in the <strong>Visual Editor</strong> or customize with HTML, CSS, and JS tabs!</p>\n<div class="custom-card">\n  <p>Interactive Counter Card</p>\n  <button id="counter-btn" class="accent-btn">Click me: <span id="count">0</span></button>\n</div>',
-  initialCss = "/* Custom CSS for your blog section */\n.custom-card {\n  background: #f8fafc;\n  border: 1px solid #e2e8f0;\n  border-radius: 8px;\n  padding: 16px;\n  margin: 16px 0;\n}\n.accent-btn {\n  background: #4f46e5;\n  color: #ffffff;\n  border: none;\n  padding: 8px 16px;\n  border-radius: 6px;\n  cursor: pointer;\n  font-weight: 600;\n}\n.accent-btn:hover {\n  background: #4338ca;\n}",
-  initialJs = '// Custom JS for your blog section\nconst btn = document.getElementById("counter-btn");\nconst countSpan = document.getElementById("count");\nlet c = 0;\nif (btn && countSpan) {\n  btn.onclick = () => {\n    c++;\n    countSpan.textContent = c;\n  };\n}',
-  onChange,
-  className = "",
-  minHeight = 350,
-  showPreview = true,
-  onUploadImage,
-  onInsertImageClick
-}) {
-  const [activeTab, setActiveTab] = useState2("visual");
-  const [html, setHtml] = useState2(initialHtml);
-  const [css, setCss] = useState2(initialCss);
-  const [js, setJs] = useState2(initialJs);
-  const emitChange = (newHtml, newCss, newJs) => {
-    if (!onChange) return;
-    const combined = `
-<style>
-${newCss}
+var DEFAULT_CODE = `<style>
+  /* Custom CSS for your blog section */
+  .custom-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+  }
+  .accent-btn {
+    background: #4f46e5;
+    color: #ffffff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .accent-btn:hover {
+    background: #4338ca;
+  }
 </style>
-<div class="blog-custom-content">
-${newHtml}
+
+<h2>Welcome to My Custom Blog Section \u{1F680}</h2>
+<p>Edit this in the <strong>Visual Editor</strong> or customize everything in the <strong>Code</strong> tab!</p>
+<div class="custom-card">
+  <p>Interactive Counter Card</p>
+  <button id="counter-btn" class="accent-btn">Click me: <span id="count">0</span></button>
 </div>
+
 <script>
+  // Custom JS for your blog section
+  const btn = document.getElementById("counter-btn");
+  const countSpan = document.getElementById("count");
+  let c = 0;
+  if (btn && countSpan) {
+    btn.onclick = () => {
+      c++;
+      countSpan.textContent = c;
+    };
+  }
+</script>`;
+var STYLE_RE = /<style\b[^>]*>[\s\S]*?<\/style\s*>/gi;
+var SCRIPT_RE = /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi;
+var innerOf = (block) => block.replace(/^<[^>]*>/, "").replace(/<\/[a-z]+\s*>$/i, "");
+var openTagOf = (block) => (block.match(/^<[^>]*>/) ?? [""])[0];
+var isPlainInlineScript = (block) => {
+  const open = openTagOf(block);
+  if (/\ssrc\s*=/i.test(open)) return false;
+  const type = open.match(/\stype\s*=\s*["']?([^"'\s>]+)/i)?.[1]?.toLowerCase();
+  return !type || type === "text/javascript" || type === "application/javascript";
+};
+function parseCode(code) {
+  const styleBlocks = code.match(STYLE_RE) ?? [];
+  const scriptBlocks = code.match(SCRIPT_RE) ?? [];
+  const markup = code.replace(STYLE_RE, "").replace(SCRIPT_RE, "").replace(/\n{3,}/g, "\n\n").trim();
+  return {
+    styleBlocks,
+    scriptBlocks,
+    markup,
+    css: styleBlocks.map(innerOf).join("\n").trim(),
+    js: scriptBlocks.filter((b) => !/\ssrc\s*=/i.test(openTagOf(b))).map(innerOf).join("\n").trim()
+  };
+}
+function mergeMarkup(parsed, newMarkup) {
+  return [parsed.styleBlocks.join("\n"), newMarkup, parsed.scriptBlocks.join("\n")].filter((part) => part.trim() !== "").join("\n\n");
+}
+function buildInitialCode({ initialCode, initialHtml, initialCss, initialJs }) {
+  if (initialCode !== void 0) return initialCode;
+  if (initialHtml === void 0 && initialCss === void 0 && initialJs === void 0) return DEFAULT_CODE;
+  return [
+    initialCss ? `<style>
+${initialCss}
+</style>` : "",
+    initialHtml ?? "",
+    initialJs ? `<script>
+${initialJs}
+</script>` : ""
+  ].filter(Boolean).join("\n\n");
+}
+function buildCombinedHtml(parsed) {
+  const scripts = parsed.scriptBlocks.map(
+    (block) => isPlainInlineScript(block) ? `${openTagOf(block)}
 (function() {
-${newJs}
+${innerOf(block)}
 })();
-</script>`.trim();
+</script>` : block
+  );
+  return [
+    parsed.styleBlocks.join("\n"),
+    `<div class="blog-custom-content">
+${parsed.markup}
+</div>`,
+    scripts.join("\n")
+  ].filter((part) => part.trim() !== "").join("\n");
+}
+function CodePenEditor(props) {
+  const {
+    onChange,
+    className = "",
+    minHeight = 350,
+    showPreview = true,
+    onUploadImage,
+    onInsertImageClick
+  } = props;
+  const [activeTab, setActiveTab] = useState2("visual");
+  const [code, setCode] = useState2(() => buildInitialCode(props));
+  const parsed = useMemo(() => parseCode(code), [code]);
+  const updateCode = (newCode) => {
+    setCode(newCode);
+    if (!onChange) return;
+    const p = parseCode(newCode);
     onChange({
-      html: newHtml,
-      css: newCss,
-      js: newJs,
-      combinedHtml: combined
+      code: newCode,
+      html: p.markup,
+      css: p.css,
+      js: p.js,
+      combinedHtml: buildCombinedHtml(p)
     });
   };
-  const handleHtmlChange = (newHtml) => {
-    setHtml(newHtml);
-    emitChange(newHtml, css, js);
-  };
-  const handleCssChange = (newCss) => {
-    setCss(newCss);
-    emitChange(html, newCss, js);
-  };
-  const handleJsChange = (newJs) => {
-    setJs(newJs);
-    emitChange(html, css, newJs);
+  const handleVisualChange = (newMarkup) => {
+    updateCode(mergeMarkup(parsed, newMarkup));
   };
   const previewSrcDoc = useMemo(() => {
     return `
@@ -3335,120 +3410,52 @@ ${newJs}
       line-height: 1.6;
     }
     ${richTextContentCss}
-    ${css}
   </style>
 </head>
 <body class="rich-text-content">
-  ${html}
-  <script>
-    try {
-      ${js}
-    } catch (err) {
-      console.error("Preview script error:", err);
-    }
-  </script>
+${code}
 </body>
 </html>
         `.trim();
-  }, [html, css, js]);
+  }, [code]);
+  const tabClass = (tab) => `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${activeTab === tab ? "bg-indigo-600 text-white shadow-sm" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"}`;
   return /* @__PURE__ */ jsxs2("div", { className: `flex flex-col border border-gray-200 rounded-xl bg-white shadow-sm overflow-hidden ${className}`, children: [
     /* @__PURE__ */ jsxs2("div", { className: "flex items-center justify-between bg-gray-50 border-b border-gray-200 px-3 py-2", children: [
       /* @__PURE__ */ jsxs2("div", { className: "flex items-center gap-1", children: [
-        /* @__PURE__ */ jsxs2(
-          "button",
-          {
-            type: "button",
-            onClick: () => setActiveTab("visual"),
-            className: `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${activeTab === "visual" ? "bg-indigo-600 text-white shadow-sm" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"}`,
-            children: [
-              /* @__PURE__ */ jsx2(Sparkles, { className: "w-3.5 h-3.5" }),
-              "Visual Editor"
-            ]
-          }
-        ),
-        /* @__PURE__ */ jsxs2(
-          "button",
-          {
-            type: "button",
-            onClick: () => setActiveTab("html"),
-            className: `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${activeTab === "html" ? "bg-indigo-600 text-white shadow-sm" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"}`,
-            children: [
-              /* @__PURE__ */ jsx2(Code2, { className: "w-3.5 h-3.5" }),
-              "HTML"
-            ]
-          }
-        ),
-        /* @__PURE__ */ jsxs2(
-          "button",
-          {
-            type: "button",
-            onClick: () => setActiveTab("css"),
-            className: `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${activeTab === "css" ? "bg-indigo-600 text-white shadow-sm" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"}`,
-            children: [
-              /* @__PURE__ */ jsx2(Paintbrush, { className: "w-3.5 h-3.5" }),
-              "CSS"
-            ]
-          }
-        ),
-        /* @__PURE__ */ jsxs2(
-          "button",
-          {
-            type: "button",
-            onClick: () => setActiveTab("js"),
-            className: `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${activeTab === "js" ? "bg-indigo-600 text-white shadow-sm" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"}`,
-            children: [
-              /* @__PURE__ */ jsx2("span", { className: "font-mono font-bold text-xs", children: "JS" }),
-              "JavaScript"
-            ]
-          }
-        )
+        /* @__PURE__ */ jsxs2("button", { type: "button", onClick: () => setActiveTab("visual"), className: tabClass("visual"), children: [
+          /* @__PURE__ */ jsx2(Sparkles, { className: "w-3.5 h-3.5" }),
+          "Visual Editor"
+        ] }),
+        /* @__PURE__ */ jsxs2("button", { type: "button", onClick: () => setActiveTab("code"), className: tabClass("code"), children: [
+          /* @__PURE__ */ jsx2(Code2, { className: "w-3.5 h-3.5" }),
+          "Code"
+        ] })
       ] }),
       /* @__PURE__ */ jsxs2("div", { className: "text-[11px] font-medium text-gray-400", children: [
         activeTab === "visual" && "Formatting toolbar active",
-        activeTab === "html" && "Raw HTML markup",
-        activeTab === "css" && "Custom styles",
-        activeTab === "js" && "Interactive logic"
+        activeTab === "code" && "HTML with inline <style> and <script>"
       ] })
     ] }),
     /* @__PURE__ */ jsxs2("div", { className: "flex-1", children: [
       activeTab === "visual" && /* @__PURE__ */ jsx2("div", { className: "p-0", children: /* @__PURE__ */ jsx2(
         RichTextEditor,
         {
-          value: html,
-          onChange: handleHtmlChange,
+          value: parsed.markup,
+          onChange: handleVisualChange,
           minHeight,
           onUploadImage,
           onInsertImageClick
         }
       ) }),
-      activeTab === "html" && /* @__PURE__ */ jsx2("div", { className: "flex flex-col", children: /* @__PURE__ */ jsx2(
+      activeTab === "code" && /* @__PURE__ */ jsx2("div", { className: "flex flex-col", children: /* @__PURE__ */ jsx2(
         "textarea",
         {
-          value: html,
-          onChange: (e) => handleHtmlChange(e.target.value),
+          value: code,
+          onChange: (e) => updateCode(e.target.value),
           className: "w-full p-4 font-mono text-xs bg-slate-900 text-slate-100 outline-none resize-none",
           style: { minHeight },
-          placeholder: "Type raw HTML here..."
-        }
-      ) }),
-      activeTab === "css" && /* @__PURE__ */ jsx2("div", { className: "flex flex-col", children: /* @__PURE__ */ jsx2(
-        "textarea",
-        {
-          value: css,
-          onChange: (e) => handleCssChange(e.target.value),
-          className: "w-full p-4 font-mono text-xs bg-slate-900 text-amber-300 outline-none resize-none",
-          style: { minHeight },
-          placeholder: "/* Enter custom CSS rules here */"
-        }
-      ) }),
-      activeTab === "js" && /* @__PURE__ */ jsx2("div", { className: "flex flex-col", children: /* @__PURE__ */ jsx2(
-        "textarea",
-        {
-          value: js,
-          onChange: (e) => handleJsChange(e.target.value),
-          className: "w-full p-4 font-mono text-xs bg-slate-900 text-emerald-300 outline-none resize-none",
-          style: { minHeight },
-          placeholder: "// Enter JavaScript here..."
+          spellCheck: false,
+          placeholder: "<style>\n  /* CSS */\n</style>\n\n<!-- HTML -->\n\n<script>\n  // JavaScript\n</script>"
         }
       ) })
     ] }),
@@ -3456,9 +3463,9 @@ ${newJs}
       /* @__PURE__ */ jsxs2("div", { className: "flex items-center justify-between px-3 py-2 bg-gray-100 border-b border-gray-200", children: [
         /* @__PURE__ */ jsxs2("span", { className: "flex items-center gap-1.5 text-xs font-bold text-gray-700 uppercase tracking-wide", children: [
           /* @__PURE__ */ jsx2(Eye, { className: "w-3.5 h-3.5 text-indigo-600" }),
-          "Live Combined Output (HTML + CSS + JS)"
+          "Live Output"
         ] }),
-        /* @__PURE__ */ jsx2("span", { className: "text-[11px] text-gray-500", children: "Updates live as you edit Visual, HTML, CSS, or JS" })
+        /* @__PURE__ */ jsx2("span", { className: "text-[11px] text-gray-500", children: "Updates live as you edit Visual or Code" })
       ] }),
       /* @__PURE__ */ jsx2(
         "iframe",

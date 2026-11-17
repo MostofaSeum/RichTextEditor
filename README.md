@@ -2,15 +2,16 @@
 
 A plug-and-play, zero-config WYSIWYG rich text editor & code customizer library for **React** and **Next.js**.
 
-Designed for production web apps, CMS platforms, and SaaS dashboards. It gives your team full Word-style visual editing, dedicated **HTML / CSS / JavaScript** tabs with live previews, drag-and-drop image uploading with corner drag-to-resize, and matching reader components.
+Designed for production web apps, CMS platforms, and SaaS dashboards. It gives your team full Word-style visual editing, a single-file **Code** tab (HTML with inline CSS & JavaScript) with live preview, drag-and-drop image uploading with corner drag-to-resize, and matching reader components.
 
 ---
 
 ## Table of Contents
 1. [Installation](#-installation)
+   - [Updating to the Latest Version](#-updating-to-the-latest-version)
 2. [Quick Start](#-quick-start)
    - [A. Visual Word-Style Editor (`<RichTextEditor />`)](#a-visual-word-style-editor-richtexteditor)
-   - [B. Multi-Tab Customizer (`<CodePenEditor />`)](#b-multi-tab-customizer-codepeneditor)
+   - [B. Visual + Code Customizer (`<CodePenEditor />`)](#b-visual--code-customizer-codepeneditor)
    - [C. Public Blog Reader (`<RichTextRenderer />`)](#c-public-blog-reader-richtextrenderer)
    - [D. Styling Saved HTML Anywhere (`content.css` / `richTextContentCss`)](#d-styling-saved-html-anywhere-contentcss--richtextcontentcss)
 3. [Image System (Upload, Drag-and-Drop, Paste & Resize)](#-image-system)
@@ -54,6 +55,67 @@ npm install react react-dom
 
 ---
 
+## 🔄 Updating to the Latest Version
+
+Installing from GitHub locks your project to the exact commit you installed (recorded in `package-lock.json`). New releases are **not** applied automatically, so your app never changes unexpectedly. To update, re-run the install:
+
+```bash
+# npm
+npm install github:MostofaSeum/RichTextEditor
+
+# yarn
+yarn upgrade @storio/rich-text-editor
+
+# pnpm
+pnpm update @storio/rich-text-editor
+```
+
+Then restart your dev server (and clear the Next.js cache with `rm -rf .next` if old styles still show).
+
+### Installing a Specific Version
+Every release is tagged. Pin a version by adding `#<tag>`:
+
+```bash
+npm install github:MostofaSeum/RichTextEditor#v1.1.0   # latest: single Code tab
+npm install github:MostofaSeum/RichTextEditor#v1.0.0   # previous: separate HTML / CSS / JS tabs
+```
+
+Check which version you have:
+```bash
+npm ls @storio/rich-text-editor
+```
+
+### Upgrading from v1.0.0 to v1.1.0
+`<CodePenEditor />` now has two tabs, **Visual Editor** and **Code**, instead of separate HTML, CSS and JS tabs. In the Code tab, write one file with HTML plus inline `<style>` and `<script>` tags.
+
+**No code changes are required.** Existing usage keeps working:
+
+| v1.0.0 | v1.1.0 |
+| :--- | :--- |
+| `initialHtml`, `initialCss`, `initialJs` | Still work (deprecated) and are merged into one file. Prefer `initialCode`. |
+| `onChange` → `{ html, css, js, combinedHtml }` | Same fields, plus `code` (the full single file). `html` / `css` / `js` are extracted from it. |
+| Saving `combinedHtml` | Unchanged. Keep saving it and rendering with `<RichTextRenderer />`. |
+
+Optional, the recommended new style:
+```tsx
+<CodePenEditor
+  initialCode={`<style>
+  .note { color: #4f46e5; }
+</style>
+
+<p class="note">Hello!</p>
+
+<script>
+  console.log('loaded');
+</script>`}
+  onChange={(data) => save(data.combinedHtml)}
+/>
+```
+
+> **Note:** Edits made in the Visual tab keep your `<style>` and `<script>` blocks, but move them to the top and bottom of the file. The rendered result is the same.
+
+---
+
 ## 🚀 Quick Start
 
 Always import the bundled editor styles once in your component or root layout:
@@ -91,7 +153,7 @@ export function SimpleArticleEditor() {
 
 ---
 
-### B. Multi-Tab Customizer (`<CodePenEditor />`)
+### B. Visual + Code Customizer (`<CodePenEditor />`)
 For CMS or power users: a **Visual Editor** tab plus a single **Code** tab where HTML, inline `<style>` CSS and inline `<script>` JS live together in one file, with a live sandboxed preview. Edits in the Visual tab only touch the markup; your `<style>` and `<script>` blocks are preserved.
 
 ```tsx
